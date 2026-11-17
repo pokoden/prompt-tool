@@ -1,4 +1,4 @@
-/* プロンプト作成 r282 */
+/* プロンプト作成 r283 */
 (() => {
 const API = 'https://api.github.com/repos/pokoden/slot-data/contents/';
 const PARTS_PATH = 'prompt/parts.json';
@@ -305,7 +305,7 @@ function usedClothTyp(exceptKey) {
 }
 function optionsFor(slot) {
   if (slot.kind === 'pose') {
-    return [{ group: 'ポーズ', items: allPoses().map(p => ({ id: p.id, label: p.title, text: p.body, zoom: p.zoom, people: p.people, line: p.line, orient: p.orient, at: p.at, _ix: p._ix })) }];
+    return [{ group: 'ポーズ', items: allPoses().map(p => ({ id: p.id, label: p.title, text: p.body, zoom: p.zoom, people: p.people, line: p.line, orient: p.orient, at: p.at, _ix: p._ix })) }]; // text is body only (poseEdit overwrites catalog body); rec.face is not included
   }
   if (slot.kind === 'lock') {
     const cur = U.fixedText || DEFAULT_FIXED;
@@ -386,6 +386,7 @@ function assemble() {
     const t = resolvedText(s.key);
     if (t) chunks.push(t);
   }
+  // pose body already includes face direction and gaze (poseEdit). Do not append rec.face / rec.gaze / face.
   return chunks.join('\n');
 }
 function zoomText() {
@@ -446,7 +447,7 @@ function modal(html, cls) {
   m.onclick = ev => { if (ev.target === m) closeModal(); };
   return m;
 }
-function closeModal() { const m = $('modal'); m.className = ''; m.innerHTML = ''; }
+function closeModal() { const m = $('modal'); if (m._tidyFs) { m._tidyFs(); m._tidyFs = null; } m.className = ''; m.innerHTML = ''; }
 window.closeModal = closeModal;
 function ask(msg, yes, no) {
   return new Promise(res => {
@@ -521,7 +522,7 @@ function renderMake() {
     const open = st.open === slot.key && resolvedText(slot.key);
     return `<div class="slot${open ? ' on' : ''}" data-key="${slot.key}">
       <div class="slot-r">
-        <button class="lab" onclick="tapLab('${slot.key}')">${esc(slot.title)}</button>
+        <button class="lab${st.list === slot.key ? ' on' : ''}" onmousedown="event.preventDefault()" onclick="tapLab('${slot.key}')">${esc(slot.title)}</button>
         <div class="inp">
           <div class="fld">
             <input id="in_${slot.key}" value="${esc(val)}" autocomplete="off" spellcheck="false" class="${hit ? 'hit' : ''}"
@@ -567,10 +568,7 @@ window.clearAll = async () => {
 };
 window.copyZoom = () => { const z = zoomText(); if (z) copyText(z); };
 window.tapLab = key => {
-  hideSug();
-  st.list = '';
-  st.open = st.open === key ? '' : key;
-  render({ keepFocus: 'in_' + key });
+  togList(key);
 };
 window.onFocus = key => {
   if (skipFocus) return;
@@ -606,13 +604,19 @@ window.onCommit = (key, raw) => {
 };
 window.togList = key => {
   document.querySelectorAll('.chev.on').forEach(b => b.classList.remove('on'));
+  document.querySelectorAll('.lab.on').forEach(b => b.classList.remove('on'));
   if (st.list === key) { st.list = ''; hideSug(); return; }
   const ae = document.activeElement;
   if (ae && ae.blur && ae.tagName === 'INPUT') ae.blur();
   st.list = key;
   st.listQ = '';
-  const btn = document.querySelector(`.slot[data-key="${key}"] .chev`);
-  if (btn) btn.classList.add('on');
+  const slotEl = document.querySelector(`.slot[data-key="${key}"]`);
+  if (slotEl) {
+    const btn = slotEl.querySelector('.chev');
+    const lab = slotEl.querySelector('.lab');
+    if (btn) btn.classList.add('on');
+    if (lab) lab.classList.add('on');
+  }
   showSug(key, '', true);
 };
 function pickItem(key, id) {
@@ -881,25 +885,73 @@ function hydrateImgs() {
   });
 }
 function galById(id) { return (U.gallery || []).find(g => g.id === id); }
+function bindFsClose(m, onClose) {
+  const img = m.querySelector('.fsimg');
+  const box = m.querySelector('.mbox.fs');
+  if (!img || !box) return;
+  let sx = 0, sy = 0, dx = 0, dy = 0, moving = false, pid = 0;
+  const start = (x, y, id) => { moving = true; pid = id || 0; sx = x; sy = y; dx = 0; dy = 0; box.style.transition = 'none'; };
+  const move = (x, y) => {
+    if (!moving) return;
+    dx = x - sx; dy = y - sy;
+    if (Math.abs(dy) > Math.abs(dx)) {
+      box.style.transform = 'translateY(' + dy + 'px)';
+      box.style.opacity = String(Math.max(0.3, 1 - Math.abs(dy) / 420));
+    }
+  };
+  const end = () => {
+    if (!moving) return;
+    moving = false;
+    const swipe = Math.abs(dy) > 80 && Math.abs(dy) >= Math.abs(dx);
+    const tap = Math.abs(dx) < 8 && Math.abs(dy) < 8;
+    if (swipe || tap) { onClose(); return; }
+    box.style.transition = 'transform .2s, opacity .2s';
+    box.style.transform = '';
+    box.style.opacity = '';
+  };
+  img.addEventListener('touchstart', ev => { const t = ev.changedTouches[0]; start(t.clientX, t.clientY, t.identifier); }, { passive: true });
+  img.addEventListener('touchmove', ev => { const t = [...ev.touches].find(x => x.identifier === pid) || ev.touches[0]; if (t) move(t.clientX, t.clientY); }, { passive: true });
+  img.addEventListener('touchend', end);
+  img.addEventListener('touchcancel', end);
+  img.addEventListener('mousedown', ev => start(ev.clientX, ev.clientY, -1));
+  const onMove = ev => { if (pid === -1) move(ev.clientX, ev.clientY); };
+  const onUp = () => { if (pid === -1) end(); };
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onUp);
+  // tidy mouse listeners when this modal is closed or replaced
+  const tidy = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+  m._tidyFs = tidy;
+}
 function openGal(id) {
   const g = galById(id);
   if (!g) return;
-  modal(`<div class="mt">${esc(g.name || '')}</div>
-    <div class="vimg"><img data-src="${esc(g.img)}" alt=""></div>
-    <div class="prev big">${esc(g.text || '')}</div>
-    <div class="row three">
-      <button class="sub dan" id="gDel">削除</button>
-      <button class="sub" id="gCopy">${ICON.copy}コピー</button>
-      <button class="b" id="gApply">反映</button>
+  const m = $('modal');
+  if (m._tidyFs) { m._tidyFs(); m._tidyFs = null; }
+  m.innerHTML = `<div class="mbox fs">
+    <div class="fsimg"><img data-src="${esc(g.img)}" alt=""></div>
+    <div class="fschrome">
+      <div class="mt">${esc(g.name || '')}</div>
+      <div class="prev fsprev">${esc(g.text || '')}</div>
+      <div class="row four">
+        <button class="sub dan" id="gDel">削除</button>
+        <button class="sub" id="gCopy">${ICON.copy}コピー</button>
+        <button class="b" id="gApply">反映</button>
+        <button class="sub" id="gClose">閉じる</button>
+      </div>
     </div>
-    <div class="row"><button class="sub wide" onclick="closeModal()">閉じる</button></div>`, 'tall');
-  const im = $('modal').querySelector('img[data-src]');
+  </div>`;
+  m.className = 'on full';
+  m.onclick = ev => { if (ev.target === m) closeModal(); };
+  const im = m.querySelector('img[data-src]');
   const th = imgCache.get(g.thumb);
   if (th) im.src = th;
   fetchImg(g.img).then(u => { if (u) im.src = u; });
-  $('gCopy').onclick = () => copyText(g.text || '');
-  $('gApply').onclick = async () => { closeModal(); applyGal(id); };
-  $('gDel').onclick = async () => {
+  bindFsClose(m, closeModal);
+  $('gClose').onclick = ev => { ev.stopPropagation(); closeModal(); };
+  $('gCopy').onclick = ev => { ev.stopPropagation(); copyText(g.text || ''); };
+  $('gApply').onclick = ev => { ev.stopPropagation(); closeModal(); applyGal(id); };
+  $('gDel').onclick = async ev => {
+    ev.stopPropagation();
     if (!(await ask(`「${g.name || ''}」を削除する？`, '削除', 'やめる'))) { openGal(id); return; }
     U.gallery = (U.gallery || []).filter(x => x.id !== id);
     U.galleryDel = [...new Set([...(U.galleryDel || []), id])];
@@ -1156,17 +1208,18 @@ document.addEventListener('click', ev => {
   if (sug.contains(ev.target)) return;
   if (!ev.target.isConnected || $('modal').contains(ev.target) || $('modal').classList.contains('on')) return;
   if (ev.target.closest && ev.target.closest('.chev')) return;
+  if (ev.target.closest && ev.target.closest('.lab')) return;
   if (ev.target.closest && ev.target.closest('.inp input')) return;
   st.list = '';
   hideSug();
-  document.querySelectorAll('.chev.on').forEach(b => b.classList.remove('on'));
+  document.querySelectorAll('.chev.on,.lab.on').forEach(b => b.classList.remove('on'));
 });
 window.addEventListener('scroll', () => {
   if (st.list && !$('sug').hidden && document.activeElement && document.activeElement.tagName !== 'INPUT') {
     const inp = $('in_' + st.list);
     if (!inp) return;
     const r = inp.getBoundingClientRect();
-    if (r.bottom < 0 || r.top > innerHeight) { st.list = ''; hideSug(); document.querySelectorAll('.chev.on').forEach(b => b.classList.remove('on')); }
+    if (r.bottom < 0 || r.top > innerHeight) { st.list = ''; hideSug(); document.querySelectorAll('.chev.on,.lab.on').forEach(b => b.classList.remove('on')); }
   }
 }, { passive: true });
 
@@ -1185,7 +1238,7 @@ function bindOnce() {
     const it = itemOf(el.dataset.kind, el.dataset.id);
     if (it) showBody(it.label, it.text, it.zoom);
   }, null);
-  longPress(app, '.gt', el => askApply(el.dataset.id), el => openGal(el.dataset.id));
+  longPress(app, '.gt', el => openGal(el.dataset.id), el => askApply(el.dataset.id));
 }
 
 async function boot() {
