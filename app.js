@@ -1,6 +1,6 @@
-/* プロンプト作成 r281 */
+/* プロンプト作成 r282 */
 (() => {
-const API = 'https://api.github.com/repos/pokoden/prompt-data/contents/';
+const API = 'https://api.github.com/repos/pokoden/slot-data/contents/';
 const PARTS_PATH = 'prompt/parts.json';
 const USER_PATH = 'prompt/user.json';
 const GAL_DIR = 'prompt/gallery/';
