@@ -16,6 +16,8 @@
 <style>
 :root{--bg:#09070a;--card:#141015;--card2:#1b151a;--line:#33281f;--line2:#4a3b2a;--gold:#d9a95c;--gold2:#f2cf8a;--ink:#f5f0e8;--red:#e0727a;--ok:#8fd89a}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body,button,#sug,#modal,#sheet,#dock,.lp,.gt,.lab,.chev,.opt,.prev,.mt,.g{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+input,textarea,select{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
 html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;font-size:16px;line-height:1.45;-webkit-text-size-adjust:100%}
 body{min-height:100dvh;background:radial-gradient(120% 60% at 50% -10%,#2a1b14 0%,transparent 60%),var(--bg)}
 svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
@@ -28,7 +30,7 @@ nav button{flex:1 0 auto;display:flex;align-items:center;justify-content:center;
 nav button svg{display:none}
 nav button.on svg{display:block}
 nav button.on{background:linear-gradient(135deg,var(--gold2),var(--gold));border-color:transparent;color:#1a1008;font-weight:800;box-shadow:0 4px 14px rgba(217,169,92,.3)}
-main{max-width:640px;margin:0 auto;padding:8px 10px calc(170px + env(safe-area-inset-bottom))}
+main{max-width:640px;margin:0 auto;padding:8px 10px calc(90px + env(safe-area-inset-bottom))}
 main[data-tab]:not([data-tab=make]){padding-bottom:calc(30px + env(safe-area-inset-bottom))}
 .card{background:linear-gradient(180deg,var(--card2),var(--card));border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:10px}
 .card.empty{display:flex;align-items:center;justify-content:center;gap:8px;min-height:120px;color:var(--gold)}
@@ -56,6 +58,14 @@ main[data-tab]:not([data-tab=make]){padding-bottom:calc(30px + env(safe-area-ins
 .sug .opt{display:block;width:100%;text-align:left;padding:12px 14px;min-height:48px;border:0;border-bottom:1px solid #261e19;background:transparent;color:var(--ink);font-size:16px;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .sug .opt.cur{color:var(--gold2);font-weight:700}
 .sug .g,.list .g{padding:8px 14px;color:var(--gold2);font-weight:700;background:#1c1512}
+.sug .gh{display:flex;align-items:center;gap:10px;width:100%;min-height:50px;padding:0 14px;border:0;border-bottom:1px solid #261e19;background:linear-gradient(180deg,#1f1813,#18120f);color:var(--gold2);font-size:16px;font-weight:800;text-align:left;letter-spacing:.04em}
+.sug .gh .gn2{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sug .gh .ar{width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:11px;border:1px solid var(--line2);color:var(--gold);transition:transform .2s}
+.sug .gh .ar svg{width:14px;height:14px}
+.sug .gh.op{background:linear-gradient(180deg,#2a1f15,#1d1611);box-shadow:inset 3px 0 0 var(--gold)}
+.sug .gh.op .ar{transform:rotate(90deg);border-color:var(--gold);background:rgba(217,169,92,.15)}
+.sug .gh .cnt{min-width:30px}
+.sug .gi .opt{padding-left:26px;background:#120d10}
 .list .g{margin:0 -14px;padding:8px 14px}
 .list .g:first-child{margin-top:-14px;border-radius:16px 16px 0 0}
 .pressing{background:rgba(217,169,92,.18)!important;transition:background .45s}
@@ -100,7 +110,7 @@ button.dan{color:var(--red);border-color:#5a2f33}
 .gt{position:relative;border-radius:14px;overflow:hidden;border:1px solid var(--line);background:var(--card);-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .gt .ph{aspect-ratio:3/4;background:linear-gradient(110deg,#1a1418 30%,#271e1c 50%,#1a1418 70%);background-size:200% 100%;animation:sh 1.4s linear infinite}
 .gt .ph.ld{animation:none;background:#000}
-.gt img{display:block;width:100%;height:100%;object-fit:cover;-webkit-touch-callout:none;pointer-events:none}
+.gt img{display:block;width:100%;height:100%;object-fit:contain;object-position:center;padding:4px 0 0;background:#000;-webkit-touch-callout:none;pointer-events:none}
 .gt .gn{position:absolute;left:0;right:0;bottom:0;padding:22px 10px 8px;background:linear-gradient(0deg,rgba(0,0,0,.85),transparent);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .gt.pressing{transform:scale(.97);transition:transform .45s}
 @keyframes sh{to{background-position:-200% 0}}
@@ -110,7 +120,6 @@ button.dan{color:var(--red);border-color:#5a2f33}
 .ok{color:var(--ok)}.ng{color:#f0a0a0}
 #dock{position:fixed;left:0;right:0;bottom:0;z-index:30;background:rgba(12,8,10,.94);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid var(--line);padding:8px 10px calc(8px + env(safe-area-inset-bottom))}
 #dock .in{max-width:640px;margin:0 auto}
-#dock .pv{min-height:72px;max-height:96px;overflow:hidden;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--card);white-space:pre-wrap;margin-bottom:8px;line-height:1.4}
 #dock .btns{display:flex;gap:8px}
 #dock .btns button{flex:1}
 #sheet,#modal{display:none;position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.72);padding:12px 12px calc(12px + env(safe-area-inset-bottom))}
@@ -128,7 +137,22 @@ button.dan{color:var(--red);border-color:#5a2f33}
 .ask{padding:14px 4px 6px;text-align:center;font-weight:700}
 .vimg{border-radius:12px;overflow:hidden;background:#000;margin-bottom:8px}
 .vimg img{display:block;width:100%;max-height:50dvh;object-fit:contain}
-.fsimg{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:calc(8px + env(safe-area-inset-top)) 8px 8px;touch-action:none}
+.fsimg{position:relative;flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:calc(8px + env(safe-area-inset-top)) 8px 8px;touch-action:none;overflow:hidden}
+.fsimg img{will-change:transform}
+.fsimg.in-l img{animation:inl .22s ease-out}.fsimg.in-r img{animation:inr .22s ease-out}
+@keyframes inl{from{transform:translateX(-40%);opacity:.2}}@keyframes inr{from{transform:translateX(40%);opacity:.2}}
+.fsnum{position:absolute;right:12px;top:calc(12px + env(safe-area-inset-top));padding:2px 10px;border-radius:12px;background:rgba(0,0,0,.55);border:1px solid var(--line2);color:var(--gold2);font-size:16px}
+.fsdots{display:flex;justify-content:center;gap:5px;margin:0 0 8px}
+.fsdots i{width:6px;height:6px;border-radius:3px;background:#4a3b2a}
+.fsdots i.on{width:16px;background:var(--gold)}
+.row.five{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}.row.five>*{min-width:0;padding:0 2px;white-space:nowrap}
+.gedit{display:flex;flex-direction:column;gap:2px}
+.gedit .el{margin-top:12px;color:var(--gold2);font-weight:800;display:flex;gap:8px;align-items:baseline}
+.gedit .el b{flex:0 0 auto;white-space:nowrap}
+.gedit .el span{color:var(--ink);font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.gedit textarea{margin-top:6px;min-height:110px}
+.gedit .edd{border-color:var(--gold)}
+.mfoot{position:sticky;bottom:-14px;margin:10px -14px -14px;padding:10px 14px 14px;background:linear-gradient(180deg,rgba(20,16,21,0),#141015 30%)}
 .fsimg img{display:block;max-width:100%;max-height:100%;object-fit:contain;pointer-events:none}
 .fschrome{flex:0 0 auto;max-height:42dvh;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:linear-gradient(180deg,transparent,rgba(8,6,8,.92) 16px);display:flex;flex-direction:column}
 .fschrome .mt{margin-bottom:6px}
@@ -149,6 +173,6 @@ button.dan{color:var(--red);border-color:#5a2f33}
 <div id="sheet"></div>
 <div id="modal"></div>
 <div id="sug" class="sug" hidden></div>
-<script src="app.js?v=283"></script>
+<script src="app.js?v=284"></script>
 </body>
 </html>

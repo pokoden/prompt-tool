@@ -1,4 +1,4 @@
-/* プロンプト作成 r283 */
+/* プロンプト作成 r284 */
 (() => {
 const API = 'https://api.github.com/repos/pokoden/slot-data/contents/';
 const PARTS_PATH = 'prompt/parts.json';
@@ -55,7 +55,8 @@ const ICON = {
   eye: '<svg viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></svg>',
   cam: '<svg viewBox="0 0 24 24"><path d="M4 8.5h3l1.8-2.5h6.4L17 8.5h3v10H4z"/><circle cx="12" cy="13" r="3.5"/></svg>',
   save: '<svg viewBox="0 0 24 24"><path d="M5 4.5h11l3 3v12H5z"/><path d="M8 4.5v5h7v-5M8 19.5v-6h8v6"/></svg>',
-  x: '<svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg>'
+  x: '<svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg>',
+  ar: '<svg viewBox="0 0 24 24"><path d="M9 5.5l6.5 6.5L9 18.5"/></svg>'
 };
 const TABS = [['make', '作成'], ['look', '確認'], ['gal', 'ギャラリー'], ['add', '追加'], ['io', '取込']];
 
@@ -80,7 +81,7 @@ let saveT = 0;
 let look = { cat: LS.get('pr_lookcat', ''), q: '', sort: LS.get('pr_sort_look', 'def') };
 let galSort = LS.get('pr_sort_gal', 'add');
 let listSort = LS.get('pr_sort_list', 'def');
-let st = { sel: {}, open: '', list: '', listQ: '', showFull: false, outputEdit: null };
+let st = { sel: {}, open: '', list: '', listQ: '', showFull: false, outputEdit: null, og: new Set() };
 let att = { blob: null, url: '', thumb: null, name: '' };
 let skipFocus = false;
 const imgCache = new Map();
@@ -397,7 +398,7 @@ function zoomText() {
 }
 function snapshot() {
   const sel = {};
-  for (const [k, v] of Object.entries(st.sel)) if (v) sel[k] = { id: v.id, label: v.label, text: v.text, typ: v.typ, custom: v.custom || undefined };
+  for (const [k, v] of Object.entries(st.sel)) if (v) sel[k] = { id: v.id, label: v.label, text: v.text, typ: v.typ, custom: v.custom || undefined, edited: v.edited || undefined };
   return { sel };
 }
 function restoreSnap(s) {
@@ -409,7 +410,8 @@ function restoreSnap(s) {
     let cur = null;
     if (!v.custom && v.id) cur = flatOptions(slot).find(x => x.id === v.id);
     st.sel[slot.key] = cur ? recOf(cur) : Object.assign({}, v);
-    if (cur && v.text && cur.text !== v.text) st.sel[slot.key].text = v.text;
+    if (cur && v.text != null && v.text !== '' && cur.text !== v.text) st.sel[slot.key].text = v.text;
+    if (v.edited) st.sel[slot.key].edited = true;
   }
   ensureLock();
   st.outputEdit = null;
@@ -474,7 +476,7 @@ function longPress(root, sel, onLong, onTap) {
     clearTimeout(t);
     el.classList.add('pressing');
     const cur = el;
-    t = setTimeout(() => { fired = true; cur.classList.remove('pressing'); if (navigator.vibrate) navigator.vibrate(12); onLong(cur); }, 480);
+    t = setTimeout(() => { fired = true; cur.classList.remove('pressing'); if (navigator.vibrate) navigator.vibrate(12); suppressAfterLong(); onLong(cur); clearSel(); }, 480);
   };
   const cancel = () => { clearTimeout(t); if (el) el.classList.remove('pressing'); };
   root.addEventListener('touchstart', e => { touched = Date.now(); const p = e.touches[0]; start(e.target, p.clientX, p.clientY); }, { passive: true });
@@ -493,6 +495,29 @@ function longPress(root, sel, onLong, onTap) {
   }, true);
   root.addEventListener('contextmenu', e => { if (e.target.closest && e.target.closest(sel)) e.preventDefault(); });
 }
+
+/* long-press aftercare: no iOS text selection / copy callout, swallow the ghost click */
+let suppressUntil = 0;
+function clearSel() { try { const s = window.getSelection && window.getSelection(); if (s && s.rangeCount) s.removeAllRanges(); } catch (e) {} }
+function suppressAfterLong() {
+  suppressUntil = Date.now() + 700;
+  const ae = document.activeElement;
+  if (ae && ae.blur && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) ae.blur();
+  clearSel();
+  [60, 200, 450, 700].forEach(ms => setTimeout(clearSel, ms));
+}
+const isEditable = el => !!(el && el.closest && el.closest('input,textarea,select,[contenteditable=true]'));
+['click', 'touchend', 'mouseup'].forEach(type => document.addEventListener(type, ev => {
+  if (Date.now() < suppressUntil && !isEditable(ev.target)) {
+    if (ev.cancelable) ev.preventDefault();
+    ev.stopPropagation();
+    clearSel();
+    if (type === 'click') suppressUntil = 0;
+  }
+}, { capture: true, passive: false }));
+document.addEventListener('contextmenu', ev => { if (!isEditable(ev.target)) ev.preventDefault(); }, { capture: true });
+document.addEventListener('selectionchange', () => { if (Date.now() < suppressUntil) clearSel(); });
+document.addEventListener('selectstart', ev => { if (!isEditable(ev.target)) ev.preventDefault(); }, { capture: true });
 
 /* ---------- render ---------- */
 window.go = k => { tab = k; LS.set('pr_tab', k); st.list = ''; hideSug(); render(); window.scrollTo(0, 0); };
@@ -610,6 +635,7 @@ window.togList = key => {
   if (ae && ae.blur && ae.tagName === 'INPUT') ae.blur();
   st.list = key;
   st.listQ = '';
+  st.og = new Set();
   const slotEl = document.querySelector(`.slot[data-key="${key}"]`);
   if (slotEl) {
     const btn = slotEl.querySelector('.chev');
@@ -643,25 +669,27 @@ function showSug(key, q, forceAll) {
   if (!box || !inp) return;
   const s = String(q || '').trim();
   const groups = optionsFor(slot);
+  const filtering = !!(s && !forceAll);
   const filtered = [];
-  if (listSort !== 'def' && slot.kind !== 'lock') {
-    let items = [];
-    for (const g of groups) items.push(...g.items);
-    if (s && !forceAll) items = items.filter(it => (it.label || '').includes(s) || (it.text || '').includes(s));
-    items = sortList(items, listSort);
-    if (items.length) filtered.push({ group: '', items: items.slice(0, 120) });
-  } else {
-    for (const g of groups) {
-      const items = s && !forceAll ? g.items.filter(it => (it.label || '').includes(s) || (it.text || '').includes(s)) : g.items;
-      if (items.length) filtered.push({ group: g.group, items: items.slice(0, s && !forceAll ? 40 : 120) });
-    }
+  for (const g of groups) {
+    let items = filtering ? g.items.filter(it => (it.label || '').includes(s) || (it.text || '').includes(s)) : g.items;
+    if (listSort !== 'def' && slot.kind !== 'lock') items = sortList(items, listSort);
+    if (items.length) filtered.push({ group: g.group, items: items.slice(0, filtering ? 40 : 200) });
   }
   if (!filtered.length) { box.hidden = true; box.innerHTML = ''; return; }
+  const keepScroll = box.dataset.key === key && !box.hidden ? box.scrollTop : 0;
   box.dataset.key = key;
+  const single = filtered.length === 1;
+  const curId = st.sel[key] && st.sel[key].id;
   const sorts = slot.kind === 'lock' ? '' : `<div class="sorts">${SORTS.map(([k, n]) => `<button class="sc${listSort === k ? ' on' : ''}" data-sort="${k}">${n}</button>`).join('')}</div>`;
-  box.innerHTML = sorts + filtered.map(g => (g.group ? `<div class="g">${esc(g.group)}</div>` : '') + g.items.map(it =>
-    `<button class="opt${st.sel[key] && st.sel[key].id === it.id ? ' cur' : ''}" data-id="${esc(it.id)}">${esc(it.label)}</button>`
-  ).join('')).join('');
+  const opt = it => `<button class="opt${curId === it.id ? ' cur' : ''}" data-id="${esc(it.id)}">${esc(it.label)}</button>`;
+  box.innerHTML = sorts + filtered.map(g => {
+    if (single) return g.items.map(opt).join('');
+    const open = filtering || st.og.has(g.group);
+    const has = curId && g.items.some(it => it.id === curId);
+    return `<button class="gh${open ? ' op' : ''}" data-g="${esc(g.group)}"><span class="ar">${ICON.ar}</span><span class="gn2">${esc(g.group)}</span>${has ? `<span class="cnt">●</span>` : `<span class="cnt">${g.items.length}</span>`}</button>`
+      + (open ? `<div class="gi">${g.items.map(opt).join('')}</div>` : '');
+  }).join('');
   const r = inp.getBoundingClientRect();
   const width = Math.min(Math.max(r.width + 96, 260), window.innerWidth - 16);
   let top = r.bottom + 4;
@@ -676,6 +704,7 @@ function showSug(key, q, forceAll) {
   }
   box.style.top = top + 'px';
   box.style.maxHeight = '46dvh';
+  if (keepScroll) box.scrollTop = keepScroll;
 }
 function optBody(key, id) {
   const slot = SLOTS.find(s => s.key === key);
@@ -885,56 +914,76 @@ function hydrateImgs() {
   });
 }
 function galById(id) { return (U.gallery || []).find(g => g.id === id); }
-function bindFsClose(m, onClose) {
+function bindFsSwipe(m, onClose, onNav) {
   const img = m.querySelector('.fsimg');
   const box = m.querySelector('.mbox.fs');
+  const pic = img && img.querySelector('img');
   if (!img || !box) return;
-  let sx = 0, sy = 0, dx = 0, dy = 0, moving = false, pid = 0;
-  const start = (x, y, id) => { moving = true; pid = id || 0; sx = x; sy = y; dx = 0; dy = 0; box.style.transition = 'none'; };
+  let sx = 0, sy = 0, dx = 0, dy = 0, moving = false, pid = 0, axis = '';
+  const start = (x, y, id) => { moving = true; axis = ''; pid = id || 0; sx = x; sy = y; dx = 0; dy = 0; box.style.transition = 'none'; if (pic) pic.style.transition = 'none'; };
   const move = (x, y) => {
     if (!moving) return;
     dx = x - sx; dy = y - sy;
-    if (Math.abs(dy) > Math.abs(dx)) {
+    if (!axis && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) axis = Math.abs(dx) >= Math.abs(dy) ? 'x' : 'y';
+    if (axis === 'x' && pic) {
+      const can = onNav(dx < 0 ? 1 : -1, true);
+      pic.style.transform = 'translateX(' + (can ? dx : dx / 4) + 'px)';
+      pic.style.opacity = String(Math.max(0.35, 1 - Math.abs(dx) / 600));
+    } else if (axis === 'y' && dy > 0) {
       box.style.transform = 'translateY(' + dy + 'px)';
-      box.style.opacity = String(Math.max(0.3, 1 - Math.abs(dy) / 420));
+      box.style.opacity = String(Math.max(0.3, 1 - dy / 420));
     }
+  };
+  const reset = () => {
+    box.style.transition = 'transform .2s, opacity .2s'; box.style.transform = ''; box.style.opacity = '';
+    if (pic) { pic.style.transition = 'transform .2s, opacity .2s'; pic.style.transform = ''; pic.style.opacity = ''; }
   };
   const end = () => {
     if (!moving) return;
     moving = false;
-    const swipe = Math.abs(dy) > 80 && Math.abs(dy) >= Math.abs(dx);
-    const tap = Math.abs(dx) < 8 && Math.abs(dy) < 8;
-    if (swipe || tap) { onClose(); return; }
-    box.style.transition = 'transform .2s, opacity .2s';
-    box.style.transform = '';
-    box.style.opacity = '';
+    if (axis === 'x' && Math.abs(dx) > 55) {
+      const dir = dx < 0 ? 1 : -1;
+      if (onNav(dir, true)) {
+        if (pic) { pic.style.transition = 'transform .16s ease-in, opacity .16s'; pic.style.transform = 'translateX(' + (dir > 0 ? '-110%' : '110%') + ')'; pic.style.opacity = '0'; }
+        setTimeout(() => onNav(dir, false), 150);
+        return;
+      }
+    }
+    if (axis === 'y' && dy > 90) { onClose(); return; }
+    if (!axis) { onClose(); return; }
+    reset();
   };
   img.addEventListener('touchstart', ev => { const t = ev.changedTouches[0]; start(t.clientX, t.clientY, t.identifier); }, { passive: true });
   img.addEventListener('touchmove', ev => { const t = [...ev.touches].find(x => x.identifier === pid) || ev.touches[0]; if (t) move(t.clientX, t.clientY); }, { passive: true });
-  img.addEventListener('touchend', end);
-  img.addEventListener('touchcancel', end);
-  img.addEventListener('mousedown', ev => start(ev.clientX, ev.clientY, -1));
+  img.addEventListener('touchend', ev => { if (ev.cancelable) ev.preventDefault(); end(); }, { passive: false });
+  img.addEventListener('touchcancel', () => { moving = false; reset(); });
+  img.addEventListener('mousedown', ev => { ev.preventDefault(); start(ev.clientX, ev.clientY, -1); });
   const onMove = ev => { if (pid === -1) move(ev.clientX, ev.clientY); };
-  const onUp = () => { if (pid === -1) end(); };
+  const onUp = () => { if (pid === -1) { end(); pid = 0; } };
+  const onKey = ev => { if (ev.key === 'ArrowRight') onNav(1, false); else if (ev.key === 'ArrowLeft') onNav(-1, false); else if (ev.key === 'Escape') onClose(); };
   window.addEventListener('mousemove', onMove);
   window.addEventListener('mouseup', onUp);
-  // tidy mouse listeners when this modal is closed or replaced
-  const tidy = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
-  m._tidyFs = tidy;
+  window.addEventListener('keydown', onKey);
+  m._tidyFs = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); window.removeEventListener('keydown', onKey); };
 }
-function openGal(id) {
+function openGal(id, from) {
   const g = galById(id);
   if (!g) return;
+  const ids = galList().map(x => x.id);
+  const ix = ids.indexOf(id);
   const m = $('modal');
   if (m._tidyFs) { m._tidyFs(); m._tidyFs = null; }
+  const dots = ids.length > 1 && ids.length <= 15 ? `<div class="fsdots">${ids.map((x, i) => `<i class="${i === ix ? 'on' : ''}"></i>`).join('')}</div>` : '';
   m.innerHTML = `<div class="mbox fs">
-    <div class="fsimg"><img data-src="${esc(g.img)}" alt=""></div>
+    <div class="fsimg${from ? ' in-' + (from > 0 ? 'r' : 'l') : ''}"><img data-src="${esc(g.img)}" alt="">${ids.length > 1 ? `<span class="fsnum">${ix + 1} / ${ids.length}</span>` : ''}</div>
     <div class="fschrome">
+      ${dots}
       <div class="mt">${esc(g.name || '')}</div>
       <div class="prev fsprev">${esc(g.text || '')}</div>
-      <div class="row four">
+      <div class="row five">
         <button class="sub dan" id="gDel">削除</button>
-        <button class="sub" id="gCopy">${ICON.copy}コピー</button>
+        <button class="sub" id="gEdit">編集</button>
+        <button class="sub" id="gCopy">コピー</button>
         <button class="b" id="gApply">反映</button>
         <button class="sub" id="gClose">閉じる</button>
       </div>
@@ -945,11 +994,18 @@ function openGal(id) {
   const im = m.querySelector('img[data-src]');
   const th = imgCache.get(g.thumb);
   if (th) im.src = th;
-  fetchImg(g.img).then(u => { if (u) im.src = u; });
-  bindFsClose(m, closeModal);
+  fetchImg(g.img).then(u => { if (u && im.isConnected) im.src = u; });
+  for (const d of [-1, 1]) { const n = galById(ids[ix + d]); if (n) fetchImg(n.img); }
+  bindFsSwipe(m, closeModal, (dir, dry) => {
+    const nid = ids[ix + dir];
+    if (!nid) return false;
+    if (!dry) openGal(nid, dir);
+    return true;
+  });
   $('gClose').onclick = ev => { ev.stopPropagation(); closeModal(); };
   $('gCopy').onclick = ev => { ev.stopPropagation(); copyText(g.text || ''); };
   $('gApply').onclick = ev => { ev.stopPropagation(); closeModal(); applyGal(id); };
+  $('gEdit').onclick = ev => { ev.stopPropagation(); editGal(id); };
   $('gDel').onclick = async ev => {
     ev.stopPropagation();
     if (!(await ask(`「${g.name || ''}」を削除する？`, '削除', 'やめる'))) { openGal(id); return; }
@@ -961,16 +1017,72 @@ function openGal(id) {
     if (tok()) { delFile(g.img).catch(() => {}); if (g.thumb) delFile(g.thumb).catch(() => {}); }
   };
 }
-async function askApply(id) {
+/* text each row contributes for a gallery snap (same rule as restoreSnap) */
+function snapRowText(slot, v) {
+  if (!v) return '';
+  if (v.text != null && v.text !== '') return v.text;
+  if (!v.custom && v.id) { const cur = flatOptions(slot).find(x => x.id === v.id); if (cur) return cur.text || ''; }
+  return '';
+}
+function snapAssemble(snap) {
+  const sel = (snap && snap.sel) || {};
+  return SLOTS.map(slot => snapRowText(slot, sel[slot.key])).filter(Boolean).join('\n');
+}
+function editGal(id) {
   const g = galById(id);
   if (!g) return;
-  if (await ask('このプロンプトを反映させますか？')) applyGal(id);
+  if (!g.snap || !g.snap.sel) g.snap = { sel: {} };
+  const sel = g.snap.sel;
+  const rows = SLOTS.filter(slot => sel[slot.key] && (snapRowText(slot, sel[slot.key]) || sel[slot.key].label));
+  const m = $('modal');
+  if (m._tidyFs) { m._tidyFs(); m._tidyFs = null; }
+  modal(`<div class="mt">編集</div>
+    <div class="gedit">
+      <div class="el">名前</div>
+      <input type="text" id="geName" value="${esc(g.name || '')}" autocomplete="off">
+      ${rows.length ? rows.map(slot => {
+        const v = sel[slot.key];
+        const lab = slot.key === 'lock' ? (v.label || '') : (v.custom ? '' : (v.label || ''));
+        return `<div class="el"><b>${esc(slot.title)}</b>${lab ? `<span>${esc(lab)}</span>` : ''}</div>
+          <textarea data-k="${slot.key}" class="${v.edited ? 'edd' : ''}">${esc(snapRowText(slot, v))}</textarea>`;
+      }).join('') : `<div class="el">本文</div><textarea id="geAll">${esc(g.text || '')}</textarea>`}
+    </div>
+    <div class="row two mfoot"><button class="sub" id="geCancel">キャンセル</button><button class="b" id="geSave">${ICON.save}保存</button></div>`, 'tall');
+  m.onclick = null;
+  $('geCancel').onclick = () => openGal(id);
+  $('geSave').onclick = () => {
+    g.name = $('geName').value.trim() || g.name || '';
+    const all = $('geAll');
+    if (all) g.text = all.value;
+    else {
+      m.querySelectorAll('textarea[data-k]').forEach(ta => {
+        const key = ta.dataset.k;
+        const slot = SLOTS.find(x => x.key === key);
+        const v = sel[key];
+        const nt = ta.value;
+        if (nt === snapRowText(slot, v)) return;
+        if (!nt.trim()) {
+          if (key === 'lock') sel[key] = { id: 'custom:', label: '', text: '', custom: true, edited: true };
+          else delete sel[key];
+          return;
+        }
+        sel[key] = Object.assign({}, v, { text: nt, edited: true });
+      });
+      g.text = snapAssemble(g.snap);
+    }
+    g.last = g.last || '';
+    saveUser(false).then(ok => { if (ok) status('保存したよ', true); });
+    render();
+    openGal(id);
+  };
 }
 function applyGal(id) {
   const g = galById(id);
   if (!g) return;
   restoreSnap(g.snap);
   if (g.text && assemble() !== g.text) st.outputEdit = g.text;
+  const ed = SLOTS.find(slot => st.sel[slot.key] && st.sel[slot.key].edited && resolvedText(slot.key));
+  if (ed) st.open = ed.key;
   g.n = (g.n || 0) + 1; g.last = now();
   scheduleSave();
   tab = 'make'; LS.set('pr_tab', tab);
@@ -1149,13 +1261,11 @@ function renderDock() {
   dock.hidden = false;
   const text = assemble();
   dock.innerHTML = `<div class="in">
-    <div class="pv" id="dockpv">${esc(text)}</div>
     <div class="btns">
       <button class="b" id="btnCopy">${ICON.copy}コピー</button>
       <button class="sub" id="btnLook">${ICON.eye}確認</button>
     </div>
   </div>`;
-  $('dockpv').onclick = () => { st.showFull = true; renderDock(); };
   $('btnCopy').onclick = () => copyText(assemble());
   $('btnLook').onclick = () => { st.showFull = true; renderDock(); };
   if (st.showFull) {
@@ -1227,7 +1337,13 @@ function bindOnce() {
   const sug = $('sug');
   sug.addEventListener('click', ev => {
     const sb = ev.target.closest && ev.target.closest('.sc');
-    if (sb) { listSort = sb.dataset.sort; LS.set('pr_sort_list', listSort); showSug(sug.dataset.key, st.listQ, !st.listQ); }
+    if (sb) { listSort = sb.dataset.sort; LS.set('pr_sort_list', listSort); showSug(sug.dataset.key, st.listQ, !st.listQ); return; }
+    const gh = ev.target.closest && ev.target.closest('.gh');
+    if (gh) {
+      const g = gh.dataset.g;
+      if (st.og.has(g)) st.og.delete(g); else st.og.add(g);
+      showSug(sug.dataset.key, st.listQ, !st.listQ);
+    }
   });
   longPress(sug, '.opt', el => {
     const it = optBody(sug.dataset.key, el.dataset.id);
@@ -1238,7 +1354,10 @@ function bindOnce() {
     const it = itemOf(el.dataset.kind, el.dataset.id);
     if (it) showBody(it.label, it.text, it.zoom);
   }, null);
-  longPress(app, '.gt', el => openGal(el.dataset.id), el => askApply(el.dataset.id));
+  app.addEventListener('click', ev => {
+    const gt = ev.target.closest && ev.target.closest('.gt');
+    if (gt && app.contains(gt)) openGal(gt.dataset.id);
+  });
 }
 
 async function boot() {
