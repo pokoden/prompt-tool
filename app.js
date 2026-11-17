@@ -1,8 +1,9 @@
-/* プロンプト作成 */
+/* プロンプト作成 r281 */
 (() => {
 const API = 'https://api.github.com/repos/pokoden/prompt-data/contents/';
 const PARTS_PATH = 'prompt/parts.json';
 const USER_PATH = 'prompt/user.json';
+const GAL_DIR = 'prompt/gallery/';
 const DEFAULT_FIXED = '肌はなめらかなマット、テカリは無い。、目に涙は無い。女性は高身長で成熟した大人の体つき、上品で妖艶な大人の雰囲気。滑らかな肌質、綺麗な肌質、肌に凹凸や線は無し、影による肌の表現はしないでください。全身の肌の影を全部消す、全身の毛穴や影の線が一切ないツルンツルンな綺麗な肌、';
 const FIXED_PRESETS = [
   { label: '固定', text: DEFAULT_FIXED },
@@ -10,6 +11,7 @@ const FIXED_PRESETS = [
   { label: '大人顔', text: '平面な2Dアニメイラスト、女性の顔は切れ長の目、通った鼻筋、シャープな顎のライン、頬はふっくらしすぎない。目に涙は無い。女性は高身長で成熟した大人の体つき、上品で妖艶な大人の雰囲気、滑らかな肌質、綺麗な肌質、肌に凹凸や線は無し、影による肌の表現はしないでください。全身の肌の影を全部消す、全身の毛穴や影の線が一切ないツルンツルンな綺麗な肌、' },
   { label: '大人顔のみ', text: '女性の顔は切れ長の目、通った鼻筋、シャープな顎のライン、頬はふっくらしすぎない。目に涙は無い。女性は高身長で成熟した大人の体つき、上品で妖艶な大人の雰囲気、滑らかな肌質、綺麗な肌質、肌に凹凸や線は無し、影による肌の表現はしないでください。全身の肌の影を全部消す、全身の毛穴や影の線が一切ないツルンツルンな綺麗な肌、' }
 ];
+const PROP_GROUPS = [['家具'], ['小道具'], ['水回り設備'], ['拘束器具'], ['乗り物'], ['建物の一部']];
 const SLOTS = [
   { key: 'pose', title: 'ポーズ、カメラ', kind: 'pose' },
   { key: 'hair', title: '髪型', kind: 'part', groups: [['髪型']] },
@@ -22,13 +24,40 @@ const SLOTS = [
   { key: 'bg', title: '背景セット', kind: 'part', groups: [['背景セット']] },
   { key: 'wall', title: '壁', kind: 'part', groups: [['壁'], ['カーテン'], ['掲示板']] },
   { key: 'floor', title: '床', kind: 'part', groups: [['床']] },
-  { key: 'prop0', title: '道具', kind: 'part', groups: [['家具'], ['小道具'], ['水回り設備'], ['拘束器具'], ['乗り物'], ['建物の一部']] },
-  { key: 'prop1', title: '道具', kind: 'part', groups: [['家具'], ['小道具'], ['水回り設備'], ['拘束器具'], ['乗り物'], ['建物の一部']] },
+  { key: 'prop0', title: '道具', kind: 'part', groups: PROP_GROUPS },
+  { key: 'prop1', title: '道具', kind: 'part', groups: PROP_GROUPS },
   { key: 'light', title: '光と影', kind: 'part', groups: [['照明']] },
   { key: 'size', title: '画像サイズ', kind: 'part', groups: [['画像サイズ']] },
   { key: 'lock', title: '固定', kind: 'lock' }
 ];
-const TABS = [['make', '作成'], ['look', '確認'], ['fav', 'お気に入り'], ['hist', '履歴'], ['parts', '部品'], ['io', '取込']];
+const LOOK_CATS = [
+  { key: 'pose', name: 'ポーズ・カメラ', pose: true },
+  { key: 'hair', name: '髪型', cats: ['髪型'] },
+  { key: 'expr', name: '表情', cats: ['表情'] },
+  { key: 'cloth', name: '服装', cats: ['服装'] },
+  { key: 'acc', name: 'アクセサリー', cats: ['アクセサリー'] },
+  { key: 'bg', name: '背景セット', cats: ['背景セット'] },
+  { key: 'wall', name: '壁', cats: ['壁', 'カーテン', '掲示板'] },
+  { key: 'floor', name: '床', cats: ['床'] },
+  { key: 'prop', name: '道具', cats: PROP_GROUPS.map(g => g[0]) },
+  { key: 'light', name: '光と影', cats: ['照明'] },
+  { key: 'size', name: '画像サイズ', cats: ['画像サイズ'] }
+];
+const SORTS = [['def', '標準'], ['add', '最近追加'], ['use', '使用回数が多い'], ['name', '名前順'], ['last', '最近使った']];
+const ICON = {
+  make: '<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/></svg>',
+  look: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>',
+  gal: '<svg viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><circle cx="9" cy="10" r="1.8"/><path d="M4 17l5-4.5 4 3.5 3-2.5 4.5 4"/></svg>',
+  add: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 8v8M8 12h8"/></svg>',
+  io: '<svg viewBox="0 0 24 24"><path d="M12 4v11M7.5 10.5L12 15l4.5-4.5"/><path d="M5 19.5h14"/></svg>',
+  copy: '<svg viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/></svg>',
+  zoom: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5M11 8v6M8 11h6"/></svg>',
+  eye: '<svg viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></svg>',
+  cam: '<svg viewBox="0 0 24 24"><path d="M4 8.5h3l1.8-2.5h6.4L17 8.5h3v10H4z"/><circle cx="12" cy="13" r="3.5"/></svg>',
+  save: '<svg viewBox="0 0 24 24"><path d="M5 4.5h11l3 3v12H5z"/><path d="M8 4.5v5h7v-5M8 19.5v-6h8v6"/></svg>',
+  x: '<svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg>'
+};
+const TABS = [['make', '作成'], ['look', '確認'], ['gal', 'ギャラリー'], ['add', '追加'], ['io', '取込']];
 
 const LS = {
   get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
@@ -45,21 +74,28 @@ const textClose = (a, b) => {
 };
 
 let tab = LS.get('pr_tab', 'make');
+if (!TABS.some(t => t[0] === tab)) tab = 'make';
 let D = null, U = emptyUser(), sha = { parts: null, user: null };
-let dirty = false, saveT = 0;
-let lookQ = '';
+let saveT = 0;
+let look = { cat: LS.get('pr_lookcat', ''), q: '', sort: LS.get('pr_sort_look', 'def') };
+let galSort = LS.get('pr_sort_gal', 'add');
+let listSort = LS.get('pr_sort_list', 'def');
 let st = { sel: {}, open: '', list: '', listQ: '', showFull: false, outputEdit: null };
+let att = { blob: null, url: '', thumb: null, name: '' };
 let skipFocus = false;
+const imgCache = new Map();
 
 function emptyUser() {
-  return { v: 1, updatedAt: '', fav: [], hist: [], order: [], partOrder: {}, partsExtra: [], partsEdit: {}, partsDelete: [], fixedText: DEFAULT_FIXED };
+  return { v: 2, updatedAt: '', order: [], partOrder: {}, partsExtra: [], partsEdit: {}, partsDelete: [], posesExtra: [], poseEdit: {}, poseDelete: [], use: {}, gallery: [], galleryDel: [], fixedText: DEFAULT_FIXED };
 }
 function status(msg, ok) {
   const el = $('st');
   if (!el) return;
   el.textContent = msg || '';
   el.className = ok === false ? 'ng' : ok ? 'ok' : '';
-  el.style.padding = msg ? '6px 4px' : '0';
+  el.classList.toggle('show', !!msg);
+  clearTimeout(status.t);
+  if (msg && ok) status.t = setTimeout(() => status(''), 2200);
 }
 
 async function gh(path, opt = {}) {
@@ -74,74 +110,123 @@ function b64dec(b) {
   return new TextDecoder().decode(u);
 }
 function b64enc(s) {
-  const u = new TextEncoder().encode(s);
+  const u = typeof s === 'string' ? new TextEncoder().encode(s) : s;
   let bin = '';
   for (let i = 0; i < u.length; i += 0x8000) bin += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
   return btoa(bin);
 }
+async function getJson(path) {
+  const r = await gh(path + '?t=' + Date.now());
+  if (!r.ok) return { status: r.status };
+  const j = await r.json();
+  let data;
+  if (j.content && j.encoding === 'base64') data = JSON.parse(b64dec(j.content));
+  else {
+    const rr = await gh(path + '?raw=' + Date.now(), { headers: { Accept: 'application/vnd.github.raw' } });
+    if (!rr.ok) return { status: rr.status };
+    data = JSON.parse(await rr.text());
+  }
+  return { status: 200, sha: j.sha, data };
+}
+
+function byIdMerge(x, y) {
+  const m = new Map();
+  for (const p of (x || [])) if (p && p.id) m.set(p.id, p);
+  for (const p of (y || [])) if (p && p.id) m.set(p.id, p);
+  return [...m.values()];
+}
 function mergeUser(a, b) {
   const out = emptyUser();
-  const later = (!a ? b : !b ? a : ((a.updatedAt || '') >= (b.updatedAt || '') ? a : b)) || emptyUser();
-  Object.assign(out, later);
-  const hist = [...(a && a.hist || []), ...(b && b.hist || [])];
-  const hs = new Map();
-  for (const h of hist) if (h && h.id && !hs.has(h.id)) hs.set(h.id, h);
-  out.hist = [...hs.values()].sort((x, y) => (x.at || '') < (y.at || '') ? 1 : -1);
-  const fav = [...(a && a.fav || []), ...(b && b.fav || [])];
-  const fs = new Map();
-  for (const f of fav) if (f && f.id && !fs.has(f.id)) fs.set(f.id, f);
-  out.fav = [...fs.values()].sort((x, y) => (x.at || '') < (y.at || '') ? 1 : -1);
-  out.partsEdit = Object.assign({}, a && a.partsEdit, b && b.partsEdit);
-  out.partsDelete = [...new Set([...(a && a.partsDelete || []), ...(b && b.partsDelete || [])])];
-  const ex = [...(a && a.partsExtra || []), ...(b && b.partsExtra || [])];
-  const em = new Map();
-  for (const p of ex) if (p && p.id) em.set(p.id, p);
-  out.partsExtra = [...em.values()];
+  let early = a, late = b;
+  if (!a) { early = null; late = b; }
+  else if (!b) { early = null; late = a; }
+  else if ((a.updatedAt || '') >= (b.updatedAt || '')) { early = b; late = a; }
+  Object.assign(out, late || {});
+  const e = early || {}, l = late || {};
+  out.partsEdit = Object.assign({}, e.partsEdit, l.partsEdit);
+  out.poseEdit = Object.assign({}, e.poseEdit, l.poseEdit);
+  out.partsDelete = [...new Set([...(e.partsDelete || []), ...(l.partsDelete || [])])];
+  out.poseDelete = [...new Set([...(e.poseDelete || []), ...(l.poseDelete || [])])];
+  out.galleryDel = [...new Set([...(e.galleryDel || []), ...(l.galleryDel || [])])];
+  out.partsExtra = byIdMerge(e.partsExtra, l.partsExtra);
+  out.posesExtra = byIdMerge(e.posesExtra, l.posesExtra);
+  const use = Object.assign({}, e.use || {});
+  for (const [k, v] of Object.entries(l.use || {})) if (!use[k] || (v.at || '') >= (use[k].at || '')) use[k] = v;
+  out.use = use;
+  const gdel = new Set(out.galleryDel);
+  const gm = new Map();
+  for (const g of [...(e.gallery || []), ...(l.gallery || [])]) {
+    if (!g || !g.id || gdel.has(g.id)) continue;
+    const old = gm.get(g.id);
+    if (!old || (g.last || g.at || '') >= (old.last || old.at || '')) gm.set(g.id, g);
+  }
+  out.gallery = [...gm.values()];
+  delete out.hist; delete out.fav;
+  out.v = 2;
   if (!out.fixedText) out.fixedText = DEFAULT_FIXED;
   return out;
 }
 
 async function loadRemote() {
   if (!tok()) throw new Error('トークン未設定');
-  const [pr, ur] = await Promise.all([gh(PARTS_PATH + '?t=' + Date.now()), gh(USER_PATH + '?t=' + Date.now())]);
+  const [pr, ur] = await Promise.all([getJson(PARTS_PATH), getJson(USER_PATH)]);
   if (pr.status === 401 || pr.status === 403) throw new Error(pr.status === 401 ? 'トークンが違うか期限切れ' : '権限がないか回数制限');
-  if (!pr.ok) throw new Error('部品の読み込みに失敗（' + pr.status + '）');
-  const pj = await pr.json();
-  sha.parts = pj.sha;
-  D = JSON.parse(b64dec(pj.content));
+  if (pr.status !== 200) throw new Error('部品の読み込みに失敗（' + pr.status + '）');
+  sha.parts = pr.sha;
+  D = pr.data;
   LS.set('pr_parts', D);
-  if (ur.ok) {
-    const uj = await ur.json();
-    sha.user = uj.sha;
-    const remote = JSON.parse(b64dec(uj.content));
-    const local = LS.get('pr_user', null);
-    U = local && local.updatedAt ? mergeUser(local, remote) : mergeUser(remote, emptyUser());
-    LS.set('pr_user', U);
+  const local = LS.get('pr_user', null);
+  if (ur.status === 200) {
+    sha.user = ur.sha;
+    U = local && local.updatedAt ? mergeUser(local, ur.data) : mergeUser(ur.data, null);
   } else if (ur.status === 404) {
     sha.user = null;
-    U = LS.get('pr_user', null) || emptyUser();
-  } else throw new Error('履歴の読み込みに失敗（' + ur.status + '）');
+    U = mergeUser(local || emptyUser(), null);
+  } else throw new Error('データの読み込みに失敗（' + ur.status + '）');
+  LS.set('pr_user', U);
 }
 async function saveUser(manual) {
   U.updatedAt = now();
   LS.set('pr_user', U);
-  if (!tok()) { if (manual) status('この端末だけに保存したよ', true); return; }
-  const payload = { message: 'prompt user sync', content: b64enc(JSON.stringify(U)), sha: sha.user || undefined };
-  const r = await gh(USER_PATH, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-  if (r.ok) {
-    const j = await r.json();
-    sha.user = (j.content && j.content.sha) || j.sha || sha.user;
-    dirty = false;
-    if (manual) status('保存したよ', true);
-  } else if (manual) status('保存できなかった（' + r.status + '）', false);
+  if (!tok()) { if (manual) status('この端末だけに保存したよ', true); return true; }
+  for (let i = 0; i < 2; i++) {
+    const payload = { message: 'prompt user sync', content: b64enc(JSON.stringify(U)), sha: sha.user || undefined };
+    const r = await gh(USER_PATH, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    if (r.ok) {
+      const j = await r.json();
+      sha.user = (j.content && j.content.sha) || sha.user;
+      if (manual) status('保存したよ', true);
+      return true;
+    }
+    if ((r.status === 409 || r.status === 422) && i === 0) {
+      const g = await getJson(USER_PATH);
+      if (g.status === 200) { sha.user = g.sha; U = mergeUser(U, g.data); U.updatedAt = now(); LS.set('pr_user', U); continue; }
+    }
+    status(r.status === 403 || r.status === 404 ? '保存の権限がないよ（トークン）' : '保存できなかった（' + r.status + '）', false);
+    return false;
+  }
+  return false;
 }
 function scheduleSave() {
-  dirty = true;
   LS.set('pr_user', U);
   clearTimeout(saveT);
   saveT = setTimeout(() => saveUser(false), 800);
 }
+async function putFile(path, bytes, msg) {
+  let s;
+  const g = await gh(path + '?t=' + Date.now());
+  if (g.ok) s = (await g.json()).sha;
+  const r = await gh(path, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: msg, content: b64enc(bytes), sha: s }) });
+  if (!r.ok) throw new Error(r.status === 403 || r.status === 404 ? '画像を保存する権限がないよ（トークン）' : '画像を保存できなかった（' + r.status + '）');
+}
+async function delFile(path) {
+  const g = await gh(path + '?t=' + Date.now());
+  if (!g.ok) return;
+  const s = (await g.json()).sha;
+  await gh(path, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: 'gallery delete', sha: s }) });
+}
 
+/* ---------- catalog ---------- */
 function catalog() { return D || { poses: [], parts: {}, sets: {}, rules: [], order: [] }; }
 function allParts() {
   const C = catalog();
@@ -150,18 +235,20 @@ function allParts() {
   const order = (U.order && U.order.length) ? U.order : (C.order || []);
   const cats = [...order, ...Object.keys(C.parts || {})];
   const seen = new Set();
+  let ix = 0;
   for (const cat of cats) {
     if (seen.has(cat) || !C.parts[cat]) continue;
     seen.add(cat);
     for (const sub of Object.keys(C.parts[cat])) {
       for (const it of C.parts[cat][sub] || []) {
+        ix++;
         if (del.has(it.id)) continue;
         const ed = U.partsEdit && U.partsEdit[it.id];
-        list.push(Object.assign({ cat, sub }, it, ed || {}));
+        list.push(Object.assign({ cat, sub, _ix: ix }, it, ed || {}));
       }
     }
   }
-  for (const it of (U.partsExtra || [])) if (!del.has(it.id)) list.push(it);
+  for (const it of (U.partsExtra || [])) if (!del.has(it.id)) list.push(Object.assign({ _ix: 1e6 + ix++ }, it));
   if (U.partOrder) {
     const ixOf = (cat, sub) => {
       const ids = U.partOrder[cat + '\t' + sub];
@@ -169,15 +256,43 @@ function allParts() {
     };
     list.sort((a, b) => {
       if (a.cat !== b.cat || a.sub !== b.sub) return 0;
-      const ix = ixOf(a.cat, a.sub);
-      if (!ix) return 0;
-      return (ix.has(a.id) ? ix.get(a.id) : 9999) - (ix.has(b.id) ? ix.get(b.id) : 9999);
+      const ix2 = ixOf(a.cat, a.sub);
+      if (!ix2) return 0;
+      return (ix2.has(a.id) ? ix2.get(a.id) : 9999) - (ix2.has(b.id) ? ix2.get(b.id) : 9999);
     });
   }
   return list;
 }
+function allPoses() {
+  const del = new Set(U.poseDelete || []);
+  const out = [];
+  let ix = 0;
+  for (const p of (catalog().poses || [])) { ix++; if (!del.has(p.id)) out.push(Object.assign({ _ix: ix }, p, (U.poseEdit || {})[p.id] || {})); }
+  for (const p of (U.posesExtra || [])) if (!del.has(p.id)) out.push(Object.assign({ _ix: 1e6 + ix++ }, p));
+  return out;
+}
 function partById(id) { return allParts().find(p => p.id === id) || null; }
-function poseById(id) { return (catalog().poses || []).find(p => p.id === id) || null; }
+function poseById(id) { return allPoses().find(p => p.id === id) || null; }
+
+function sortList(arr, mode, nameOf) {
+  const use = U.use || {};
+  const a = arr.slice();
+  const nm = nameOf || (x => x.label || x.title || x.name || '');
+  if (mode === 'add') a.sort((x, y) => ((y.at || '') > (x.at || '') ? 1 : (y.at || '') < (x.at || '') ? -1 : 0) || ((y._ix || 0) - (x._ix || 0)));
+  else if (mode === 'use') a.sort((x, y) => ((use[y.id] && use[y.id].n) || y.n || 0) - ((use[x.id] && use[x.id].n) || x.n || 0));
+  else if (mode === 'last') {
+    const l = x => (use[x.id] && use[x.id].at) || x.last || '';
+    a.sort((x, y) => (l(y) > l(x) ? 1 : l(y) < l(x) ? -1 : 0));
+  } else if (mode === 'name') a.sort((x, y) => nm(x).localeCompare(nm(y), 'ja'));
+  return a;
+}
+function bumpUse(id) {
+  if (!id || String(id).startsWith('custom:') || String(id).startsWith('preset:')) return;
+  U.use = U.use || {};
+  const u = U.use[id] || { n: 0 };
+  U.use[id] = { n: (u.n || 0) + 1, at: now() };
+  scheduleSave();
+}
 
 function usedClothTyp(exceptKey) {
   const used = new Set();
@@ -190,7 +305,7 @@ function usedClothTyp(exceptKey) {
 }
 function optionsFor(slot) {
   if (slot.kind === 'pose') {
-    return [{ group: 'ポーズ', items: (catalog().poses || []).map(p => ({ id: p.id, label: p.title, text: p.body, zoom: p.zoom, people: p.people, line: p.line, orient: p.orient })) }];
+    return [{ group: 'ポーズ', items: allPoses().map(p => ({ id: p.id, label: p.title, text: p.body, zoom: p.zoom, people: p.people, line: p.line, orient: p.orient, at: p.at, _ix: p._ix })) }];
   }
   if (slot.kind === 'lock') {
     const cur = U.fixedText || DEFAULT_FIXED;
@@ -275,14 +390,27 @@ function assemble() {
 }
 function zoomText() {
   const v = st.sel.pose;
-  if (!v || !v.id) return '';
+  if (!v || !v.id || v.custom) return '';
   const p = poseById(v.id);
-  return (p && p.zoom) || v.zoom || '';
+  return (p ? p.zoom : v.zoom) || '';
 }
-function snapshot() { return { sel: JSON.parse(JSON.stringify(st.sel)) }; }
+function snapshot() {
+  const sel = {};
+  for (const [k, v] of Object.entries(st.sel)) if (v) sel[k] = { id: v.id, label: v.label, text: v.text, typ: v.typ, custom: v.custom || undefined };
+  return { sel };
+}
 function restoreSnap(s) {
   if (!s || !s.sel) return;
-  st.sel = JSON.parse(JSON.stringify(s.sel));
+  st.sel = {};
+  for (const slot of SLOTS) {
+    const v = s.sel[slot.key];
+    if (!v) { st.sel[slot.key] = slot.key === 'lock' ? undefined : null; continue; }
+    let cur = null;
+    if (!v.custom && v.id) cur = flatOptions(slot).find(x => x.id === v.id);
+    st.sel[slot.key] = cur ? recOf(cur) : Object.assign({}, v);
+    if (cur && v.text && cur.text !== v.text) st.sel[slot.key].text = v.text;
+  }
+  ensureLock();
   st.outputEdit = null;
   st.open = '';
 }
@@ -292,7 +420,7 @@ function applyInput(key, raw, openBody) {
   const s = String(raw || '').trim();
   st.outputEdit = null;
   if (!s) {
-    st.sel[key] = (key === 'lock') ? null : null;
+    st.sel[key] = null;
     if (openBody) st.open = '';
     return;
   }
@@ -305,28 +433,77 @@ function applyInput(key, raw, openBody) {
   if (openBody && rec && rec.text) st.open = key;
 }
 
-async function copyText(text, title) {
+async function copyText(text) {
   try { await navigator.clipboard.writeText(text); status('コピーしたよ', true); }
   catch (e) { prompt('長押しでコピーしてね', text); }
-  if (title !== false) {
-    U.hist.unshift({ id: uid(), at: now(), title: title || (st.sel.pose && st.sel.pose.label) || '（ポーズなし）', text, snap: snapshot() });
-    scheduleSave();
-  }
+}
+
+/* ---------- modal / long press ---------- */
+function modal(html, cls) {
+  const m = $('modal');
+  m.innerHTML = `<div class="mbox ${cls || ''}">${html}</div>`;
+  m.className = 'on';
+  m.onclick = ev => { if (ev.target === m) closeModal(); };
+  return m;
+}
+function closeModal() { const m = $('modal'); m.className = ''; m.innerHTML = ''; }
+window.closeModal = closeModal;
+function ask(msg, yes, no) {
+  return new Promise(res => {
+    modal(`<div class="ask">${esc(msg)}</div><div class="row two"><button class="sub" id="askNo">${esc(no || 'いいえ')}</button><button class="b" id="askYes">${esc(yes || 'はい')}</button></div>`, 'small');
+    $('askYes').onclick = () => { closeModal(); res(true); };
+    $('askNo').onclick = () => { closeModal(); res(false); };
+    $('modal').onclick = ev => { if (ev.target === $('modal')) { closeModal(); res(false); } };
+  });
+}
+function showBody(title, body, zoom) {
+  modal(`<div class="mt">${esc(title)}</div><div class="prev big">${esc(body || '')}</div>${zoom ? `<div class="mt sm">ズーム</div><div class="prev">${esc(zoom)}</div>` : ''}
+    <div class="row two"><button class="sub" onclick="closeModal()">閉じる</button><button class="b" id="bodyCopy">${ICON.copy}コピー</button></div>`);
+  $('bodyCopy').onclick = () => copyText(body || '');
+}
+function longPress(root, sel, onLong, onTap) {
+  let t = 0, sx = 0, sy = 0, el = null, fired = false, touched = 0;
+  const start = (target, x, y) => {
+    fired = false;
+    el = target.closest ? target.closest(sel) : null;
+    if (!el || !root.contains(el)) { el = null; return; }
+    const b = target.closest('button');
+    if (b && b !== el) { el = null; return; }
+    sx = x; sy = y;
+    clearTimeout(t);
+    el.classList.add('pressing');
+    const cur = el;
+    t = setTimeout(() => { fired = true; cur.classList.remove('pressing'); if (navigator.vibrate) navigator.vibrate(12); onLong(cur); }, 480);
+  };
+  const cancel = () => { clearTimeout(t); if (el) el.classList.remove('pressing'); };
+  root.addEventListener('touchstart', e => { touched = Date.now(); const p = e.touches[0]; start(e.target, p.clientX, p.clientY); }, { passive: true });
+  root.addEventListener('touchmove', e => { const p = e.touches[0]; if (Math.abs(p.clientX - sx) > 10 || Math.abs(p.clientY - sy) > 10) { cancel(); el = null; } }, { passive: true });
+  root.addEventListener('touchend', e => { cancel(); if (fired) e.preventDefault(); }, { passive: false });
+  root.addEventListener('touchcancel', cancel);
+  root.addEventListener('mousedown', e => { if (Date.now() - touched < 800) return; start(e.target, e.clientX, e.clientY); });
+  root.addEventListener('mouseup', cancel);
+  root.addEventListener('mouseleave', cancel);
+  root.addEventListener('click', e => {
+    const c = e.target.closest ? e.target.closest(sel) : null;
+    if (!c || !root.contains(c)) return;
+    if (e.target.closest('button') && e.target.closest('button') !== c && c.contains(e.target.closest('button'))) return;
+    if (fired) { fired = false; e.preventDefault(); e.stopPropagation(); return; }
+    if (onTap) { e.stopPropagation(); onTap(c, e); }
+  }, true);
+  root.addEventListener('contextmenu', e => { if (e.target.closest && e.target.closest(sel)) e.preventDefault(); });
 }
 
 /* ---------- render ---------- */
-window.go = k => { tab = k; LS.set('pr_tab', k); st.list = ''; hideSug(); render(); };
+window.go = k => { tab = k; LS.set('pr_tab', k); st.list = ''; hideSug(); render(); window.scrollTo(0, 0); };
 window.saveTok = () => {
   const v = ($('tk') && $('tk').value.trim()) || '';
   if (!v) { alert('トークンを入れてね'); return; }
   LS.set('v2_token', v);
   boot();
 };
-
 function renderNav() {
-  $('nav').innerHTML = TABS.map(([k, n]) => `<button class="${tab === k ? 'on' : ''}" onclick="go('${k}')">${n}</button>`).join('');
+  $('nav').innerHTML = TABS.map(([k, n]) => `<button class="${tab === k ? 'on' : ''}" onclick="go('${k}')">${ICON[k]}<span>${n}</span></button>`).join('');
 }
-
 function tokenCard() {
   return `<div class="card"><input id="tk" type="password" placeholder="github_pat_..."><div class="row"><button class="b" onclick="saveTok()">保存して読み込む</button></div></div>`;
 }
@@ -334,7 +511,10 @@ function tokenCard() {
 function renderMake() {
   if (!D) return tokenCard();
   ensureLock();
-  return `<div id="form">${SLOTS.map(slot => {
+  const z = zoomText();
+  const any = SLOTS.some(s => s.key !== 'lock' && st.sel[s.key]);
+  return `<div class="bar"><div class="bt">${ICON.make}<span>組合</span></div><button class="mini" id="clrAll" ${any ? '' : 'disabled'} onclick="clearAll()">全部解除</button></div>
+  <div id="form">${SLOTS.map(slot => {
     const v = st.sel[slot.key];
     const val = inputLabel(slot.key);
     const hit = v && !v.custom && v.text;
@@ -343,22 +523,54 @@ function renderMake() {
       <div class="slot-r">
         <button class="lab" onclick="tapLab('${slot.key}')">${esc(slot.title)}</button>
         <div class="inp">
-          <input id="in_${slot.key}" value="${esc(val)}" autocomplete="off" spellcheck="false" class="${hit ? 'hit' : ''}"
-            onfocus="onFocus('${slot.key}')" oninput="onType('${slot.key}',this.value)" onchange="onCommit('${slot.key}',this.value)">
-          <button class="chev${st.list === slot.key ? ' on' : ''}" onclick="togList('${slot.key}')">▼</button>
+          <div class="fld">
+            <input id="in_${slot.key}" value="${esc(val)}" autocomplete="off" spellcheck="false" class="${hit ? 'hit' : ''}"
+              onfocus="onFocus('${slot.key}')" oninput="onType('${slot.key}',this.value)" onchange="onCommit('${slot.key}',this.value)">
+            ${val ? `<button class="clr" aria-label="解除" onmousedown="event.preventDefault()" onclick="clearRow('${slot.key}')">${ICON.x}</button>` : ''}
+          </div>
+          <button class="chev${st.list === slot.key ? ' on' : ''}" onmousedown="event.preventDefault()" onclick="togList('${slot.key}')">▼</button>
         </div>
       </div>
       ${open ? `<div class="body">${esc(resolvedText(slot.key))}</div>` : ''}
     </div>`;
-  }).join('')}</div>`;
+  }).join('')}
+  ${z ? `<div class="zrow"><button class="zbtn" id="btnZoomCopy" onclick="copyZoom()">${ICON.zoom}ズームをコピー</button></div>` : ''}
+  </div>
+  ${renderAttach()}`;
 }
+function renderAttach() {
+  return `<div class="card attach">
+    <div class="bt">${ICON.gal}<span>ギャラリーに保存</span></div>
+    <label class="pick${att.url ? ' has' : ''}">
+      ${att.url ? `<img src="${att.url}" alt="">` : `<span class="pi">${ICON.cam}</span><span>画像を添付</span>`}
+      <input type="file" id="attFile" accept="image/*" onchange="onAttach(this)">
+    </label>
+    ${att.url ? `<button class="mini wide" onclick="clearAttach()">画像を外す</button>` : ''}
+    <input type="text" id="attName" placeholder="名前" value="${esc(att.name)}" oninput="att.name=this.value" autocomplete="off">
+    <button class="b wide" id="btnGalSave" ${att.blob ? '' : 'disabled'} onclick="saveGallery()">${ICON.save}保存する</button>
+  </div>`;
+}
+window.att = att;
 
+window.clearRow = key => {
+  st.sel[key] = null;
+    st.outputEdit = null;
+  if (st.open === key) st.open = '';
+  st.list = ''; hideSug();
+  render();
+};
+window.clearAll = async () => {
+  if (!(await ask('全部解除する？'))) return;
+  for (const s of SLOTS) if (s.key !== 'lock') st.sel[s.key] = null;
+  st.outputEdit = null; st.open = ''; st.list = ''; hideSug();
+  render();
+};
+window.copyZoom = () => { const z = zoomText(); if (z) copyText(z); };
 window.tapLab = key => {
   hideSug();
   st.list = '';
   st.open = st.open === key ? '' : key;
-  const keep = 'in_' + key;
-  render({ keepFocus: keep });
+  render({ keepFocus: 'in_' + key });
 };
 window.onFocus = key => {
   if (skipFocus) return;
@@ -373,8 +585,8 @@ window.onType = (key, raw) => {
     st.open = key;
     st.list = '';
     hideSug();
+    bumpUse(st.sel[key].id);
     render({ keepFocus: 'in_' + key, caret });
-    renderDock();
     return;
   }
   st.list = key;
@@ -385,23 +597,25 @@ window.onType = (key, raw) => {
   showSug(key, raw);
 };
 window.onCommit = (key, raw) => {
+  const before = st.sel[key] && st.sel[key].id;
   applyInput(key, raw, true);
+  if (st.sel[key] && !st.sel[key].custom && st.sel[key].id !== before) bumpUse(st.sel[key].id);
   st.list = '';
   hideSug();
   render({ keepFocus: 'in_' + key });
 };
 window.togList = key => {
-  if (st.list === key) { st.list = ''; hideSug(); document.querySelector('.chev.on') && document.querySelector('.chev.on').classList.remove('on'); return; }
-  st.list = key;
-  st.listQ = ($('in_' + key) && $('in_' + key).value) || '';
   document.querySelectorAll('.chev.on').forEach(b => b.classList.remove('on'));
-  const btn = document.querySelector(`#in_${key}`) && document.querySelector(`#in_${key}`).nextElementSibling;
+  if (st.list === key) { st.list = ''; hideSug(); return; }
+  const ae = document.activeElement;
+  if (ae && ae.blur && ae.tagName === 'INPUT') ae.blur();
+  st.list = key;
+  st.listQ = '';
+  const btn = document.querySelector(`.slot[data-key="${key}"] .chev`);
   if (btn) btn.classList.add('on');
-  showSug(key, st.listQ, true);
-  const inp = $('in_' + key);
-  if (inp) inp.focus();
+  showSug(key, '', true);
 };
-window.pickItem = (key, id) => {
+function pickItem(key, id) {
   const slot = SLOTS.find(s => s.key === key);
   const it = flatOptions(slot).find(x => x.id === id);
   if (!it) return;
@@ -410,14 +624,13 @@ window.pickItem = (key, id) => {
   st.open = key;
   st.list = '';
   if (key === 'lock') { U.fixedText = it.text; scheduleSave(); }
+  bumpUse(id);
   hideSug();
   render({ keepFocus: 'in_' + key });
-};
-
+}
 function hideSug() {
   const box = $('sug');
   if (box) { box.hidden = true; box.innerHTML = ''; }
-  st.list = st.list;
 }
 function showSug(key, q, forceAll) {
   const slot = SLOTS.find(s => s.key === key);
@@ -427,167 +640,327 @@ function showSug(key, q, forceAll) {
   const s = String(q || '').trim();
   const groups = optionsFor(slot);
   const filtered = [];
-  for (const g of groups) {
-    const items = s && !forceAll ? g.items.filter(it => (it.label || '').includes(s) || (it.text || '').includes(s)) : g.items;
-    if (items.length) filtered.push({ group: g.group, items: items.slice(0, s && !forceAll ? 40 : 80) });
+  if (listSort !== 'def' && slot.kind !== 'lock') {
+    let items = [];
+    for (const g of groups) items.push(...g.items);
+    if (s && !forceAll) items = items.filter(it => (it.label || '').includes(s) || (it.text || '').includes(s));
+    items = sortList(items, listSort);
+    if (items.length) filtered.push({ group: '', items: items.slice(0, 120) });
+  } else {
+    for (const g of groups) {
+      const items = s && !forceAll ? g.items.filter(it => (it.label || '').includes(s) || (it.text || '').includes(s)) : g.items;
+      if (items.length) filtered.push({ group: g.group, items: items.slice(0, s && !forceAll ? 40 : 120) });
+    }
   }
   if (!filtered.length) { box.hidden = true; box.innerHTML = ''; return; }
-  box.innerHTML = filtered.map(g => `<div class="g">${esc(g.group)}</div>` + g.items.map(it =>
-    `<button onclick="pickItem('${key}','${esc(it.id)}')">${esc(it.label)}</button>`
+  box.dataset.key = key;
+  const sorts = slot.kind === 'lock' ? '' : `<div class="sorts">${SORTS.map(([k, n]) => `<button class="sc${listSort === k ? ' on' : ''}" data-sort="${k}">${n}</button>`).join('')}</div>`;
+  box.innerHTML = sorts + filtered.map(g => (g.group ? `<div class="g">${esc(g.group)}</div>` : '') + g.items.map(it =>
+    `<button class="opt${st.sel[key] && st.sel[key].id === it.id ? ' cur' : ''}" data-id="${esc(it.id)}">${esc(it.label)}</button>`
   ).join('')).join('');
   const r = inp.getBoundingClientRect();
-  const width = Math.min(Math.max(r.width + 48, 240), window.innerWidth - 16);
+  const width = Math.min(Math.max(r.width + 96, 260), window.innerWidth - 16);
   let top = r.bottom + 4;
   box.style.left = Math.max(8, Math.min(r.left, window.innerWidth - width - 8)) + 'px';
   box.style.width = width + 'px';
   box.hidden = false;
   box.style.top = '0px';
-  const h = Math.min(box.scrollHeight, window.innerHeight * 0.42);
+  const h = Math.min(box.scrollHeight, window.innerHeight * 0.46);
   if (top + h > window.innerHeight - 8) {
     const above = r.top - 4 - h;
     top = above > 8 ? above : Math.max(8, window.innerHeight - h - 8);
   }
   box.style.top = top + 'px';
-  box.style.maxHeight = '42dvh';
+  box.style.maxHeight = '46dvh';
+}
+function optBody(key, id) {
+  const slot = SLOTS.find(s => s.key === key);
+  return flatOptions(slot).find(x => x.id === id);
 }
 
+/* ---------- attach / gallery save ---------- */
+function loadImg(file) {
+  return new Promise((res, rej) => {
+    const u = URL.createObjectURL(file);
+    const im = new Image();
+    im.onload = () => res({ im, u });
+    im.onerror = () => { URL.revokeObjectURL(u); rej(new Error('画像を読めなかった')); };
+    im.src = u;
+  });
+}
+function toJpeg(im, maxSide, q) {
+  const w0 = im.naturalWidth || im.width, h0 = im.naturalHeight || im.height;
+  const k = Math.min(1, maxSide / Math.max(w0, h0));
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(w0 * k)); c.height = Math.max(1, Math.round(h0 * k));
+  const x = c.getContext('2d');
+  x.fillStyle = '#000'; x.fillRect(0, 0, c.width, c.height);
+  x.drawImage(im, 0, 0, c.width, c.height);
+  return new Promise(res => c.toBlob(b => res(b), 'image/jpeg', q));
+}
+window.onAttach = async el => {
+  const f = el.files && el.files[0];
+  if (!f) return;
+  try {
+    const { im, u } = await loadImg(f);
+    const big = await toJpeg(im, 1200, 0.85);
+    const th = await toJpeg(im, 480, 0.8);
+    URL.revokeObjectURL(u);
+    if (att.url) URL.revokeObjectURL(att.url);
+    att.blob = big; att.thumb = th; att.url = URL.createObjectURL(th);
+    render();
+  } catch (e) { status(String(e.message || e), false); }
+};
+window.clearAttach = () => { if (att.url) URL.revokeObjectURL(att.url); att.blob = null; att.thumb = null; att.url = ''; render(); };
+window.saveGallery = async () => {
+  if (!att.blob) return;
+  if (!tok()) { status('トークンを入れてね', false); return; }
+  const text = assemble();
+  if (!text.trim()) { status('プロンプトが空だよ', false); return; }
+  const btn = $('btnGalSave');
+  if (btn) { btn.disabled = true; btn.textContent = '保存中…'; }
+  const id = 'g_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const name = (att.name || '').trim() || (st.sel.pose && st.sel.pose.label) || 'プロンプト';
+  try {
+    const big = new Uint8Array(await att.blob.arrayBuffer());
+    const th = new Uint8Array(await att.thumb.arrayBuffer());
+    await putFile(GAL_DIR + id + '.jpg', big, 'gallery add');
+    await putFile(GAL_DIR + id + '_t.jpg', th, 'gallery add');
+    imgCache.set(GAL_DIR + id + '_t.jpg', URL.createObjectURL(att.thumb));
+    imgCache.set(GAL_DIR + id + '.jpg', URL.createObjectURL(att.blob));
+    U.gallery = U.gallery || [];
+    U.gallery.unshift({ id, at: now(), name, text, snap: snapshot(), img: GAL_DIR + id + '.jpg', thumb: GAL_DIR + id + '_t.jpg', n: 0, last: '' });
+    const ok = await saveUser(false);
+    if (att.url) URL.revokeObjectURL(att.url);
+    att.blob = null; att.thumb = null; att.url = ''; att.name = '';
+    render();
+    if (ok) status('ギャラリーに保存したよ', true);
+  } catch (e) {
+    status(String(e.message || e), false);
+    if (btn) { btn.disabled = false; btn.innerHTML = ICON.save + '保存する'; }
+  }
+};
+
+/* ---------- 確認 ---------- */
+function lookItems(cat) {
+  if (cat.pose) return allPoses().map(p => ({ kind: 'pose', id: p.id, label: p.title, text: p.body, zoom: p.zoom, sub: p.cat || '', at: p.at, _ix: p._ix }));
+  return allParts().filter(p => cat.cats.includes(p.cat) && p.label && p.label !== '✖️').map(p => ({ kind: 'part', id: p.id, label: p.label, text: p.text, sub: p.sub || p.cat, at: p.at, _ix: p._ix }));
+}
 function renderLook() {
   if (!D) return tokenCard();
-  const q = lookQ.trim();
-  const hits = [];
-  if (q) {
-    for (const p of (catalog().poses || [])) {
-      if ((p.title || '').includes(q) || p.title === q) hits.push({ kind: 'pose', p, label: p.title, exact: p.title === q });
+  const cat = LOOK_CATS.find(c => c.key === look.cat);
+  const chips = `<div class="chips">${LOOK_CATS.map(c => `<button class="chip${look.cat === c.key ? ' on' : ''}" onclick="setLookCat('${c.key}')">${esc(c.name)}</button>`).join('')}</div>`;
+  const q = look.q.trim();
+  let items = [];
+  if (cat) items = lookItems(cat);
+  else if (q) for (const c of LOOK_CATS) items.push(...lookItems(c));
+  if (q) items = items.filter(it => (it.label || '').includes(q) || (it.text || '').includes(q));
+  items = sortList(items, look.sort);
+  let list = '';
+  if (cat || q) {
+    if (!items.length) list = `<div class="card empty">ない</div>`;
+    else {
+      let last = null, html = '';
+      for (const it of items) {
+        if (look.sort === 'def' && it.sub !== last) { html += `<div class="g">${esc(it.sub || '')}</div>`; last = it.sub; }
+        const n = (U.use && U.use[it.id] && U.use[it.id].n) || 0;
+        html += `<div class="li lp" data-kind="${it.kind}" data-id="${esc(it.id)}">
+          <span class="lt">${esc(it.label)}</span>${n ? `<span class="cnt">${n}</span>` : ''}
+          <button class="mini" onclick="editItem('${it.kind}','${esc(it.id)}')">編集</button>
+          <button class="mini dan" onclick="delItem('${it.kind}','${esc(it.id)}')">削除</button>
+        </div>`;
+      }
+      list = `<div class="card list">${html}</div>`;
     }
-    for (const it of allParts()) {
-      if ((it.label || '').includes(q) || it.label === q) hits.push({ kind: 'part', p: it, label: it.label, exact: it.label === q });
-    }
-    hits.sort((a, b) => (b.exact - a.exact) || a.label.length - b.label.length);
   }
-  const rest = hits.slice(0, 12);
   return `<div class="card">
-    <input type="search" id="lookq" value="${esc(lookQ)}" placeholder="タイトル" autocomplete="off" oninput="onLook(this.value)">
+    ${chips}
+    <div class="srch"><input type="search" id="lookq" value="${esc(look.q)}" placeholder="タイトル" autocomplete="off" oninput="onLook(this.value)">
+    ${(look.cat || look.q) ? `<button class="mini" onclick="clearLook()">解除</button>` : ''}</div>
+    ${sortBar(look.sort, 'setLookSort', SORTS)}
   </div>
-  <div id="look">${rest.map(h => lookHit(h)).join('') || (q ? '<div class="card">（ない）</div>' : '')}</div>`;
+  <div id="lookList">${list}</div>`;
 }
-function lookHit(h) {
-  if (h.kind === 'pose') {
-    const p = h.p;
-    return `<div class="card hit">
-      <b>${esc(p.title)}</b>
-      <div>${esc(p.people || '')}　${esc(p.orient || '')}　${esc(p.cat || '')}</div>
-      ${p.line ? `<div class="prev">${esc(p.line)}</div>` : ''}
-      <div class="prev">${esc(p.body || '')}</div>
-      <div class="row">
-        <button class="b" onclick="copyLook('pose','${esc(p.id)}')">本文をコピー</button>
-        ${p.zoom ? `<button class="sub" onclick="copyLook('zoom','${esc(p.id)}')">ズーム</button>` : ''}
-      </div>
-    </div>`;
-  }
-  const p = h.p;
-  return `<div class="card hit">
-    <b>${esc(p.label)}</b>
-    <div>${esc(p.cat)}${p.sub && p.sub !== p.cat ? ' / ' + esc(p.sub) : ''}</div>
-    <div class="prev">${esc(p.text || '')}</div>
-    <div class="row"><button class="b" onclick="copyLook('part','${esc(p.id)}')">コピー</button></div>
-  </div>`;
+function sortBar(cur, fn, opts) {
+  return `<div class="sorts">${opts.map(([k, n]) => `<button class="sc${cur === k ? ' on' : ''}" onclick="${fn}('${k}')">${n}</button>`).join('')}</div>`;
 }
-window.onLook = v => { lookQ = v; render(); const el = $('lookq'); if (el) { el.focus(); const n = el.value.length; el.setSelectionRange(n, n); } };
-window.copyLook = async (kind, id) => {
-  if (kind === 'pose') { const p = poseById(id); if (p) await copyText(p.body || '', false); }
-  else if (kind === 'zoom') { const p = poseById(id); if (p) await copyText(p.zoom || '', false); }
-  else { const p = partById(id); if (p) await copyText(p.text || '', false); }
+window.setLookCat = k => { look.cat = look.cat === k ? '' : k; LS.set('pr_lookcat', look.cat); render(); };
+window.setLookSort = k => { look.sort = k; LS.set('pr_sort_look', k); render(); };
+window.clearLook = () => { look.cat = ''; look.q = ''; LS.set('pr_lookcat', ''); render(); };
+window.onLook = v => {
+  look.q = v;
+  const el0 = $('lookq'); const caret = el0 ? el0.selectionStart : v.length;
+  render();
+  const el = $('lookq'); if (el) { el.focus(); try { el.setSelectionRange(caret, caret); } catch (e) {} }
 };
-
-function renderList(kind) {
-  const arr = kind === 'fav' ? (U.fav || []) : (U.hist || []);
-  if (!arr.length) return `<div class="card">（まだない）</div>`;
-  return `<div class="card">${arr.map(x => `
-    <div class="item">
-      <div><b>${esc(x.title || '')}</b><div>${esc((x.at || '').replace('T', ' ').slice(0, 19))}</div></div>
-      <div>
-        <button class="sub" onclick="loadSnap('${kind}','${esc(x.id)}')">呼び出す</button>
-        ${kind === 'fav' ? `<button class="sub" onclick="delFav('${esc(x.id)}')">外す</button>` : ''}
-      </div>
-    </div>`).join('')}</div>`;
+function itemOf(kind, id) {
+  if (kind === 'pose') { const p = poseById(id); return p && { label: p.title, text: p.body, zoom: p.zoom }; }
+  const p = partById(id); return p && { label: p.label, text: p.text };
 }
-window.loadSnap = (kind, id) => {
-  const arr = kind === 'fav' ? U.fav : U.hist;
-  const x = (arr || []).find(e => e.id === id);
-  if (!x) return;
-  restoreSnap(x.snap);
-  tab = 'make'; LS.set('pr_tab', tab); render();
-};
-window.delFav = id => { U.fav = (U.fav || []).filter(x => x.id !== id); scheduleSave(); render(); };
-window.doFav = () => {
-  U.fav.unshift({ id: uid(), at: now(), title: (st.sel.pose && st.sel.pose.label) || '（ポーズなし）', text: assemble(), snap: snapshot() });
-  scheduleSave(); status('お気に入りに入れたよ', true); render();
-};
-
-function renderParts() {
-  if (!D) return tokenCard();
-  const by = new Map();
-  for (const p of allParts()) {
-    if (!by.has(p.cat)) by.set(p.cat, new Map());
-    const sm = by.get(p.cat);
-    if (!sm.has(p.sub)) sm.set(p.sub, []);
-    sm.get(p.sub).push(p);
-  }
-  const cats = [...by.keys()];
-  let html = `<div class="card">
-    <select id="na_cat">${cats.map(c => `<option>${esc(c)}</option>`).join('')}</select>
-    <div class="row" style="margin-top:8px"><input id="na_sub" placeholder="小分類"></div>
-    <div class="row"><input id="na_lab" placeholder="名前"></div>
-    <div class="row"><textarea id="na_tx" placeholder="本文"></textarea></div>
-    <div class="row"><button class="b" onclick="addPart()">追加</button></div>
-  </div>`;
-  for (const cat of cats) {
-    const sm = by.get(cat);
-    for (const [sub, list] of sm) {
-      html += `<div class="card"><b>${esc(cat)} / ${esc(sub)}</b>${list.map((p, i) => `
-        <div class="item" style="align-items:flex-start">
-          <div style="flex:1"><input value="${esc(p.label)}" onchange="edPart('${esc(p.id)}','label',this.value)"><textarea onchange="edPart('${esc(p.id)}','text',this.value)">${esc(p.text)}</textarea></div>
-          <div>
-            <button class="sub" ${i === 0 ? 'disabled' : ''} onclick="movePart('${esc(cat)}','${esc(sub)}',${i},-1)">上へ</button>
-            <button class="sub" ${i === list.length - 1 ? 'disabled' : ''} onclick="movePart('${esc(cat)}','${esc(sub)}',${i},1)">下へ</button>
-            <button class="sub" onclick="delPart('${esc(p.id)}')">削除</button>
-          </div>
-        </div>`).join('')}</div>`;
+window.editItem = (kind, id) => {
+  const it = itemOf(kind, id);
+  if (!it) return;
+  modal(`<div class="mt">編集</div>
+    <input type="text" id="edLab" value="${esc(it.label)}" placeholder="タイトル">
+    <textarea id="edTx" placeholder="本文">${esc(it.text || '')}</textarea>
+    ${kind === 'pose' ? `<textarea id="edZm" class="short" placeholder="ズーム">${esc(it.zoom || '')}</textarea>` : ''}
+    <div class="row two"><button class="sub" onclick="closeModal()">キャンセル</button><button class="b" id="edSave">保存</button></div>`);
+  $('edSave').onclick = () => {
+    const label = $('edLab').value.trim();
+    const text = $('edTx').value;
+    if (!label) { $('edLab').focus(); return; }
+    if (kind === 'pose') {
+      const zoom = $('edZm').value;
+      const ex = (U.posesExtra || []).find(x => x.id === id);
+      if (ex) Object.assign(ex, { title: label, body: text, zoom });
+      else U.poseEdit[id] = Object.assign({}, U.poseEdit[id] || {}, { title: label, body: text, zoom });
+    } else {
+      const ex = (U.partsExtra || []).find(x => x.id === id);
+      if (ex) Object.assign(ex, { label, text });
+      else U.partsEdit[id] = Object.assign({}, U.partsEdit[id] || {}, { label, text });
     }
+    for (const s of SLOTS) {
+      const v = st.sel[s.key];
+      if (v && v.id === id) { v.label = label; v.text = text; if (kind === 'pose') v.zoom = $('edZm').value; }
+    }
+    closeModal();
+    saveUser(false).then(ok => { if (ok) status('保存したよ', true); });
+    render();
+  };
+};
+window.delItem = async (kind, id) => {
+  const it = itemOf(kind, id);
+  if (!it) return;
+  if (!(await ask(`「${it.label}」を削除する？`, '削除', 'やめる'))) return;
+  if (kind === 'pose') {
+    U.posesExtra = (U.posesExtra || []).filter(x => x.id !== id);
+    U.poseDelete = [...new Set([...(U.poseDelete || []), id])];
+  } else {
+    U.partsExtra = (U.partsExtra || []).filter(x => x.id !== id);
+    U.partsDelete = [...new Set([...(U.partsDelete || []), id])];
   }
-  return html;
+  saveUser(false).then(ok => { if (ok) status('削除したよ', true); });
+  render();
+};
+
+/* ---------- ギャラリー ---------- */
+const GAL_SORTS = SORTS.filter(s => s[0] !== 'def');
+function galList() { return sortList((U.gallery || []).filter(g => !(U.galleryDel || []).includes(g.id)), galSort, g => g.name || ''); }
+function renderGal() {
+  if (!D) return tokenCard();
+  const list = galList();
+  return `<div class="card">${sortBar(galSort, 'setGalSort', GAL_SORTS)}</div>
+  ${list.length ? `<div class="grid">${list.map(g => `<div class="gt" data-id="${esc(g.id)}">
+      <div class="ph"><img data-src="${esc(g.thumb || g.img)}" alt=""></div>
+      <div class="gn">${esc(g.name || '')}</div>
+    </div>`).join('')}</div>` : `<div class="card empty">${ICON.gal}<span>まだない</span></div>`}`;
 }
+window.setGalSort = k => { galSort = k; LS.set('pr_sort_gal', k); render(); };
+let imgQ = [], imgBusy = 0;
+function fetchImg(path) {
+  if (imgCache.has(path)) return Promise.resolve(imgCache.get(path));
+  return new Promise(res => { imgQ.push({ path, res }); pumpImg(); });
+}
+function pumpImg() {
+  while (imgBusy < 4 && imgQ.length) {
+    const { path, res } = imgQ.shift();
+    if (imgCache.has(path)) { res(imgCache.get(path)); continue; }
+    imgBusy++;
+    gh(path, { headers: { Accept: 'application/vnd.github.raw' } })
+      .then(r => r.ok ? r.blob() : null)
+      .then(b => { const u = b ? URL.createObjectURL(b) : ''; if (u) imgCache.set(path, u); res(u); })
+      .catch(() => res(''))
+      .finally(() => { imgBusy--; pumpImg(); });
+  }
+}
+function hydrateImgs() {
+  document.querySelectorAll('img[data-src]').forEach(im => {
+    const p = im.dataset.src;
+    if (imgCache.has(p)) { im.src = imgCache.get(p); im.closest('.ph') && im.closest('.ph').classList.add('ld'); return; }
+    fetchImg(p).then(u => { if (u) { im.src = u; im.closest('.ph') && im.closest('.ph').classList.add('ld'); } });
+  });
+}
+function galById(id) { return (U.gallery || []).find(g => g.id === id); }
+function openGal(id) {
+  const g = galById(id);
+  if (!g) return;
+  modal(`<div class="mt">${esc(g.name || '')}</div>
+    <div class="vimg"><img data-src="${esc(g.img)}" alt=""></div>
+    <div class="prev big">${esc(g.text || '')}</div>
+    <div class="row three">
+      <button class="sub dan" id="gDel">削除</button>
+      <button class="sub" id="gCopy">${ICON.copy}コピー</button>
+      <button class="b" id="gApply">反映</button>
+    </div>
+    <div class="row"><button class="sub wide" onclick="closeModal()">閉じる</button></div>`, 'tall');
+  const im = $('modal').querySelector('img[data-src]');
+  const th = imgCache.get(g.thumb);
+  if (th) im.src = th;
+  fetchImg(g.img).then(u => { if (u) im.src = u; });
+  $('gCopy').onclick = () => copyText(g.text || '');
+  $('gApply').onclick = async () => { closeModal(); applyGal(id); };
+  $('gDel').onclick = async () => {
+    if (!(await ask(`「${g.name || ''}」を削除する？`, '削除', 'やめる'))) { openGal(id); return; }
+    U.gallery = (U.gallery || []).filter(x => x.id !== id);
+    U.galleryDel = [...new Set([...(U.galleryDel || []), id])];
+    render();
+    const ok = await saveUser(false);
+    if (ok) status('削除したよ', true);
+    if (tok()) { delFile(g.img).catch(() => {}); if (g.thumb) delFile(g.thumb).catch(() => {}); }
+  };
+}
+async function askApply(id) {
+  const g = galById(id);
+  if (!g) return;
+  if (await ask('このプロンプトを反映させますか？')) applyGal(id);
+}
+function applyGal(id) {
+  const g = galById(id);
+  if (!g) return;
+  restoreSnap(g.snap);
+  if (g.text && assemble() !== g.text) st.outputEdit = g.text;
+  g.n = (g.n || 0) + 1; g.last = now();
+  scheduleSave();
+  tab = 'make'; LS.set('pr_tab', tab);
+  render(); window.scrollTo(0, 0);
+  status('反映したよ', true);
+}
+
+/* ---------- 追加 ---------- */
+function renderAdd() {
+  if (!D) return tokenCard();
+  const cats = [...new Set(allParts().map(p => p.cat))];
+  const sel = LS.get('pr_addcat', 'ポーズ・カメラ');
+  const subs = sel === 'ポーズ・カメラ' ? [] : [...new Set(allParts().filter(p => p.cat === sel).map(p => p.sub))];
+  return `<div class="card addf">
+    <div class="bt">${ICON.add}<span>追加</span></div>
+    <select id="na_cat" onchange="setAddCat(this.value)">
+      <option ${sel === 'ポーズ・カメラ' ? 'selected' : ''}>ポーズ・カメラ</option>
+      ${cats.map(c => `<option ${c === sel ? 'selected' : ''}>${esc(c)}</option>`).join('')}
+    </select>
+    ${sel === 'ポーズ・カメラ' ? '' : `<input id="na_sub" list="na_subs" placeholder="小分類" autocomplete="off" value="${esc(subs[0] || '')}"><datalist id="na_subs">${subs.map(s => `<option value="${esc(s)}">`).join('')}</datalist>`}
+    <input id="na_lab" type="text" placeholder="タイトル" autocomplete="off">
+    <textarea id="na_tx" placeholder="本文"></textarea>
+    ${sel === 'ポーズ・カメラ' ? `<textarea id="na_zm" class="short" placeholder="ズーム"></textarea>` : ''}
+    <button class="b wide" onclick="addPart()">${ICON.add}追加する</button>
+  </div>`;
+}
+window.setAddCat = v => { LS.set('pr_addcat', v); render(); };
 window.addPart = () => {
   const cat = $('na_cat').value.trim();
-  const sub = $('na_sub').value.trim() || cat;
   const label = $('na_lab').value.trim();
   const text = $('na_tx').value;
-  if (!cat || !label) { alert('分類と名前を入れてね'); return; }
-  U.partsExtra.push({ id: uid(), cat, sub, label, text, tags: [] });
-  scheduleSave(); render();
-};
-window.edPart = (id, field, val) => {
-  if ((U.partsExtra || []).some(x => x.id === id)) {
-    U.partsExtra.find(x => x.id === id)[field] = val;
+  if (!cat || !label) { status('タイトルを入れてね', false); return; }
+  if (cat === 'ポーズ・カメラ') {
+    U.posesExtra = U.posesExtra || [];
+    U.posesExtra.push({ id: uid(), title: label, body: text, zoom: ($('na_zm') && $('na_zm').value) || '', at: now() });
   } else {
-    U.partsEdit[id] = Object.assign({}, U.partsEdit[id] || {}, { [field]: val });
+    const sub = ($('na_sub') && $('na_sub').value.trim()) || cat;
+    U.partsExtra.push({ id: uid(), cat, sub, label, text, tags: [], at: now() });
   }
-  scheduleSave();
-};
-window.delPart = id => {
-  if (!confirm('この部品を削除する？')) return;
-  U.partsExtra = (U.partsExtra || []).filter(x => x.id !== id);
-  U.partsDelete = [...new Set([...(U.partsDelete || []), id])];
-  scheduleSave(); render();
-};
-window.movePart = (cat, sub, i, d) => {
-  const list = allParts().filter(p => p.cat === cat && p.sub === sub);
-  const j = i + d;
-  if (j < 0 || j >= list.length) return;
-  const ids = list.map(x => x.id);
-  const t = ids[i]; ids[i] = ids[j]; ids[j] = t;
-  U.partOrder[cat + '\t' + sub] = ids;
-  scheduleSave(); render();
+  saveUser(false).then(ok => { if (ok) status('追加したよ', true); });
+  status('追加したよ', true);
+  render();
 };
 
 function renderIo() {
@@ -608,7 +981,7 @@ function renderIo() {
     <div class="row"><textarea id="fixedTx" onchange="setFixed(this.value)">${esc(fx)}</textarea></div>
   </div>
   <div class="card">
-    <input type="file" id="tsv" accept=".tsv,.txt,text/tab-separated-values" onchange="impTsv(this)">
+    <label class="pick slim"><span class="pi">${ICON.io}</span><span>TSVを取り込む</span><input type="file" id="tsv" accept=".tsv,.txt,text/tab-separated-values" onchange="impTsv(event)"></label>
   </div>
   <div class="card">
     <div class="row">
@@ -661,7 +1034,7 @@ window.impTsv = async ev => {
         e.text = body; e.label = label;
       } else U.partsEdit[exist.id] = Object.assign({}, U.partsEdit[exist.id] || {}, { label, text: body });
     } else {
-      const it = { id: uid(), cat, sub, label, text: body, tags: [] };
+      const it = { id: uid(), cat, sub, label, text: body, tags: [], at: now() };
       U.partsExtra.push(it);
       byLabel.set(cat + '\t' + label, it);
     }
@@ -710,7 +1083,7 @@ window.dlXlsx = () => {
   const partRows = [['分類', '小分類', '名前', '本文']];
   for (const p of allParts()) partRows.push([p.cat, p.sub, p.label, p.text]);
   const poseRows = [['タイトル', '分類', '分類グループ', '人数', '画像向き', '本文', 'ズーム', 'セリフ', '顔の向き', '視線', '表情']];
-  for (const p of (catalog().poses || [])) poseRows.push([p.title, p.cat, p.catGroup, p.people, p.orient, p.body, p.zoom, p.line, (p.rec && p.rec.face) || '', (p.rec && p.rec.gaze) || '', (p.rec && p.rec.expr) || '']);
+  for (const p of allPoses()) poseRows.push([p.title, p.cat, p.catGroup, p.people, p.orient, p.body, p.zoom, p.line, (p.rec && p.rec.face) || '', (p.rec && p.rec.gaze) || '', (p.rec && p.rec.expr) || '']);
   const setRows = [['種類', '名前', '部品']];
   for (const [k, arr] of Object.entries(catalog().sets || {})) for (const s of arr || []) setRows.push([k, s.label, (s.items || []).join('、')]);
   xlsxDownload('プロンプト部品.xlsx', [{ name: '部品', rows: partRows }, { name: 'ポーズ', rows: poseRows }, { name: 'セット', rows: setRows }]);
@@ -723,26 +1096,24 @@ function renderDock() {
   if (tab !== 'make' || !D) { dock.hidden = true; if (sheet) { sheet.className = ''; sheet.innerHTML = ''; } return; }
   dock.hidden = false;
   const text = assemble();
-  const z = zoomText();
   dock.innerHTML = `<div class="in">
     <div class="pv" id="dockpv">${esc(text)}</div>
     <div class="btns">
-      <button class="b" id="btnCopy">コピー</button>
-      <button class="sub" id="btnZoom" ${z ? '' : 'disabled'}>ズーム</button>
-      <button class="sub" id="btnFav">お気に入り</button>
+      <button class="b" id="btnCopy">${ICON.copy}コピー</button>
+      <button class="sub" id="btnLook">${ICON.eye}確認</button>
     </div>
   </div>`;
-  $('dockpv').onclick = () => { st.showFull = true; render(); };
+  $('dockpv').onclick = () => { st.showFull = true; renderDock(); };
   $('btnCopy').onclick = () => copyText(assemble());
-  $('btnZoom').onclick = () => { if (z) copyText(z, false); };
-  $('btnFav').onclick = () => doFav();
+  $('btnLook').onclick = () => { st.showFull = true; renderDock(); };
   if (st.showFull) {
     sheet.className = 'on';
     sheet.innerHTML = `<div class="box">
+      <div class="mt">完成文</div>
       <textarea id="fullTx">${esc(text)}</textarea>
-      <div class="row">
-        <button class="b" id="fullCopy">コピー</button>
+      <div class="row two">
         <button class="sub" id="fullClose">閉じる</button>
+        <button class="b" id="fullCopy">${ICON.copy}コピー</button>
       </div>
     </div>`;
     $('fullTx').oninput = ev => { st.outputEdit = ev.target.value; };
@@ -757,18 +1128,20 @@ function renderDock() {
 
 function render(opt) {
   opt = opt || {};
+  const keep = opt.keepFocus;
+  const wasActive = keep && document.activeElement && document.activeElement.id === keep;
   renderNav();
   const app = $('app');
-  const keep = opt.keepFocus;
   const caret = opt.caret;
+  app.dataset.tab = tab;
   if (tab === 'make') app.innerHTML = renderMake();
   else if (tab === 'look') app.innerHTML = renderLook();
-  else if (tab === 'fav') app.innerHTML = renderList('fav');
-  else if (tab === 'hist') app.innerHTML = renderList('hist');
-  else if (tab === 'parts') app.innerHTML = renderParts();
+  else if (tab === 'gal') app.innerHTML = renderGal();
+  else if (tab === 'add') app.innerHTML = renderAdd();
   else app.innerHTML = renderIo();
   renderDock();
-  if (keep && $(keep)) {
+  hydrateImgs();
+  if (wasActive && $(keep)) {
     skipFocus = true;
     $(keep).focus();
     const n = caret != null ? caret : $(keep).value.length;
@@ -781,19 +1154,47 @@ document.addEventListener('click', ev => {
   const sug = $('sug');
   if (!sug || sug.hidden) return;
   if (sug.contains(ev.target)) return;
+  if (!ev.target.isConnected || $('modal').contains(ev.target) || $('modal').classList.contains('on')) return;
   if (ev.target.closest && ev.target.closest('.chev')) return;
   if (ev.target.closest && ev.target.closest('.inp input')) return;
   st.list = '';
   hideSug();
   document.querySelectorAll('.chev.on').forEach(b => b.classList.remove('on'));
 });
+window.addEventListener('scroll', () => {
+  if (st.list && !$('sug').hidden && document.activeElement && document.activeElement.tagName !== 'INPUT') {
+    const inp = $('in_' + st.list);
+    if (!inp) return;
+    const r = inp.getBoundingClientRect();
+    if (r.bottom < 0 || r.top > innerHeight) { st.list = ''; hideSug(); document.querySelectorAll('.chev.on').forEach(b => b.classList.remove('on')); }
+  }
+}, { passive: true });
+
+function bindOnce() {
+  const sug = $('sug');
+  sug.addEventListener('click', ev => {
+    const sb = ev.target.closest && ev.target.closest('.sc');
+    if (sb) { listSort = sb.dataset.sort; LS.set('pr_sort_list', listSort); showSug(sug.dataset.key, st.listQ, !st.listQ); }
+  });
+  longPress(sug, '.opt', el => {
+    const it = optBody(sug.dataset.key, el.dataset.id);
+    if (it) showBody(it.label, it.text, it.zoom);
+  }, el => pickItem(sug.dataset.key, el.dataset.id));
+  const app = $('app');
+  longPress(app, '.lp', el => {
+    const it = itemOf(el.dataset.kind, el.dataset.id);
+    if (it) showBody(it.label, it.text, it.zoom);
+  }, null);
+  longPress(app, '.gt', el => askApply(el.dataset.id), el => openGal(el.dataset.id));
+}
 
 async function boot() {
   status('読み込み中…');
   try {
     const cached = LS.get('pr_parts', null);
     if (cached && !D) D = cached;
-    U = LS.get('pr_user', null) || U;
+    const lu = LS.get('pr_user', null);
+    if (lu) U = mergeUser(lu, null);
     if (!U.fixedText) U.fixedText = DEFAULT_FIXED;
     if (tok()) await loadRemote();
     else if (!D) tab = 'io';
@@ -811,6 +1212,5 @@ async function boot() {
 }
 window.boot = boot;
 window.saveUser = saveUser;
-window.doFav = doFav;
-addEventListener('DOMContentLoaded', () => boot());
+addEventListener('DOMContentLoaded', () => { bindOnce(); boot(); });
 })();
