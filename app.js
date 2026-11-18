@@ -1,4 +1,4 @@
-/* プロンプト作成 r287 */
+/* プロンプト作成 r288 */
 (() => {
 const API = 'https://api.github.com/repos/pokoden/slot-data/contents/';
 const PARTS_PATH = 'prompt/parts.json';
@@ -28,8 +28,12 @@ const SLOTS = [
   { key: 'prop1', title: '道具', kind: 'part', groups: PROP_GROUPS },
   { key: 'light', title: '光と影', kind: 'part', groups: [['照明']] },
   { key: 'size', title: '画像サイズ', kind: 'part', groups: [['画像サイズ']] },
-  { key: 'lock', title: '固定', kind: 'lock' }
+  { key: 'lock', title: '品質向上', kind: 'part', groups: [['品質向上']] }
 ];
+const Q_CAT = '品質向上';
+const QID = l => Q_CAT + '_' + l;
+const GAL_CATS = [['ポーズ', ['pose']], ['髪型', ['hair']], ['表情', ['expr']], ['服装', ['cl0', 'cl1', 'cl2']], ['アクセサリー', ['acc0', 'acc1']], ['背景セット', ['bg']], ['壁', ['wall']], ['床', ['floor']], ['道具', ['prop0', 'prop1']], ['完成品', null]];
+const gcOf = g => (g && GAL_CATS.some(c => c[0] === g.gc)) ? g.gc : 'ポーズ';
 const LOOK_CATS = [
   { key: 'pose', name: 'ポーズ・カメラ', pose: true },
   { key: 'hair', name: '髪型', cats: ['髪型'] },
@@ -41,7 +45,8 @@ const LOOK_CATS = [
   { key: 'floor', name: '床', cats: ['床'] },
   { key: 'prop', name: '道具', cats: PROP_GROUPS.map(g => g[0]) },
   { key: 'light', name: '光と影', cats: ['照明'] },
-  { key: 'size', name: '画像サイズ', cats: ['画像サイズ'] }
+  { key: 'size', name: '画像サイズ', cats: ['画像サイズ'] },
+  { key: 'quality', name: '品質向上', cats: ['品質向上'] }
 ];
 const SORTS = [['def', '標準'], ['add', '最近追加'], ['use', '使用回数が多い'], ['name', '名前順'], ['last', '最近使った']];
 const ICON = {
@@ -58,7 +63,7 @@ const ICON = {
   x: '<svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg>',
   ar: '<svg viewBox="0 0 24 24"><path d="M9 5.5l6.5 6.5L9 18.5"/></svg>'
 };
-const TABS = [['make', '作成'], ['look', '確認'], ['gal', 'ギャラリー'], ['add', '追加'], ['io', '取込']];
+const TABS = [['make', '作成'], ['look', '確認'], ['gal', 'ギャラリー'], ['io', '取込']];
 
 const LS = {
   get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
@@ -80,9 +85,12 @@ let D = null, U = emptyUser(), sha = { parts: null, user: null };
 let saveT = 0;
 let look = { cat: LS.get('pr_lookcat', ''), q: '', sort: LS.get('pr_sort_look', 'def') };
 let galSort = LS.get('pr_sort_gal', 'add');
+let galCat = LS.get('pr_galcat', 'ポーズ');
+if (!GAL_CATS.some(c => c[0] === galCat)) galCat = 'ポーズ';
+let tsvDraft = '';
 let listSort = LS.get('pr_sort_list', 'def');
 let st = { sel: {}, open: '', list: '', listQ: '', showFull: false, outputEdit: null, og: new Set() };
-let att = { blob: null, url: '', thumb: null, name: '' };
+let att = { blob: null, url: '', thumb: null, name: '', gc: LS.get('pr_galcat_save', 'ポーズ') };
 let gEdit = null; // { id } while overwriting a gallery entry from 作成
 let skipFocus = false;
 const imgCache = new Map();
@@ -230,7 +238,28 @@ async function delFile(path) {
 }
 
 /* ---------- catalog ---------- */
-function catalog() { return D || { poses: [], parts: {}, sets: {}, rules: [], order: [] }; }
+function catalog() {
+  if (D && D.parts && !D.parts[Q_CAT]) D.parts[Q_CAT] = { [Q_CAT]: FIXED_PRESETS.map(p => ({ id: QID(p.label), label: p.label, text: p.text, tags: [] })) };
+  return D || { poses: [], parts: {}, sets: {}, rules: [], order: [] };
+}
+/* 旧「固定」(preset:◯◯) を品質向上の部品idへ */
+function legacyId(key, v) {
+  const id = v && v.id;
+  if (!id || key !== 'lock' || !String(id).startsWith('preset:')) return id;
+  const l = String(id).slice(7);
+  const qs = allParts().filter(x => x.cat === Q_CAT);
+  if (l === '設定') { const h = qs.find(x => x.text === v.text) || qs.find(x => x.label === '設定'); return h ? h.id : id; }
+  const h = qs.find(x => x.id === QID(l)) || qs.find(x => x.label === l);
+  return h ? h.id : id;
+}
+function migrateQuality() {
+  const fx = U.fixedText;
+  if (!D || !fx || FIXED_PRESETS.some(p => p.text === fx)) return;
+  if (allParts().some(x => x.cat === Q_CAT && x.text === fx)) return;
+  U.partsExtra = U.partsExtra || [];
+  U.partsExtra.push({ id: uid(), cat: Q_CAT, sub: Q_CAT, label: '設定', text: fx, tags: [], at: now() });
+  scheduleSave();
+}
 function allParts() {
   const C = catalog();
   const list = [];
@@ -338,12 +367,6 @@ function optionsFor(slot, ppl) {
     }
     return [...groups].map(([group, arr]) => ({ group, items: arr.map(p => ({ id: p.id, label: p.title, text: p.body, zoom: p.zoom, people: p.people, line: p.line, orient: p.orient, at: p.at, _ix: p._ix })) })); // text is body only (poseEdit overwrites catalog body); rec.face is not included
   }
-  if (slot.kind === 'lock') {
-    const cur = U.fixedText || DEFAULT_FIXED;
-    const list = FIXED_PRESETS.map(p => ({ id: 'preset:' + p.label, label: p.label, text: p.text, group: '固定文' }));
-    if (!list.some(p => p.text === cur)) list.unshift({ id: 'preset:設定', label: '設定', text: cur, group: '固定文' });
-    return [{ group: '固定文', items: list }];
-  }
   if (slot.kind === 'clothes') {
     const used = usedClothTyp(slot.key);
     const groups = [];
@@ -393,17 +416,24 @@ function recOf(it) {
   return { id: it.id, label: it.label, text: it.text, typ: it.typ, ud: it.ud, cat: it.cat, sub: it.sub, zoom: it.zoom, people: it.people, line: it.line, orient: it.orient };
 }
 
+function qualityDefault() {
+  const qs = allParts().filter(p => p.cat === Q_CAT && (p.text || p.label) && p.label !== '✖️');
+  return qs.find(p => p.id === U.qualityId) || qs.find(p => p.text === U.fixedText) || qs.find(p => p.id === QID('固定')) || qs[0] || null;
+}
 function ensureLock() {
-  if (st.sel.lock === undefined) {
-    const fx = U.fixedText || DEFAULT_FIXED;
-    const pr = FIXED_PRESETS.find(p => p.text === fx);
-    st.sel.lock = { id: pr ? 'preset:' + pr.label : 'preset:設定', label: pr ? pr.label : '設定', text: fx };
+  if (st.sel.lock === undefined && D) {
+    const p = qualityDefault();
+    st.sel.lock = p ? recOf(p) : null;
   }
+}
+function rememberQuality(rec) {
+  if (!rec || rec.custom || !rec.id) return;
+  U.qualityId = rec.id; U.fixedText = rec.text || '';
+  scheduleSave();
 }
 function inputLabel(key) {
   const v = st.sel[key];
   if (!v) return '';
-  if (key === 'lock' && (v.id || '').startsWith('preset:')) return v.label === '設定' ? v.text : v.label;
   return v.custom ? v.label : (v.label || '');
 }
 function resolvedText(key) {
@@ -431,17 +461,22 @@ function snapshot() {
   for (const [k, v] of Object.entries(st.sel)) if (v) sel[k] = { id: v.id, label: v.label, text: v.text, typ: v.typ, custom: v.custom || undefined, edited: v.edited || undefined };
   return { sel };
 }
+function restoreRow(slot, v) {
+  if (!v) return null;
+  let cur = null;
+  const id = legacyId(slot.key, v);
+  if (!v.custom && id) cur = flatOptions(slot).find(x => x.id === id);
+  const out = cur ? recOf(cur) : Object.assign({}, v);
+  if (cur && v.text != null && v.text !== '' && cur.text !== v.text) out.text = v.text;
+  if (v.edited) out.edited = true;
+  return out;
+}
 function restoreSnap(s) {
   if (!s || !s.sel) return;
   st.sel = {};
   for (const slot of SLOTS) {
     const v = s.sel[slot.key];
-    if (!v) { st.sel[slot.key] = slot.key === 'lock' ? undefined : null; continue; }
-    let cur = null;
-    if (!v.custom && v.id) cur = flatOptions(slot).find(x => x.id === v.id);
-    st.sel[slot.key] = cur ? recOf(cur) : Object.assign({}, v);
-    if (cur && v.text != null && v.text !== '' && cur.text !== v.text) st.sel[slot.key].text = v.text;
-    if (v.edited) st.sel[slot.key].edited = true;
+    st.sel[slot.key] = !v && slot.key === 'lock' ? undefined : restoreRow(slot, v);
   }
   ensureLock();
   st.outputEdit = null;
@@ -459,10 +494,7 @@ function applyInput(key, raw, openBody) {
   }
   const rec = findMatch(slot, s, slot.kind === 'pose' ? peopleSel : '');
   st.sel[key] = rec;
-  if (key === 'lock' && rec && !rec.custom && rec.text) {
-    U.fixedText = rec.text;
-    scheduleSave();
-  }
+  if (key === 'lock') rememberQuality(rec);
   if (openBody && rec && rec.text) st.open = key;
 }
 
@@ -561,7 +593,7 @@ function renderNav() {
   $('nav').innerHTML = TABS.map(([k, n]) => `<button class="${tab === k ? 'on' : ''}" onclick="go('${k}')">${ICON[k]}<span>${n}</span></button>`).join('');
 }
 function tokenCard() {
-  return `<div class="card"><input id="tk" type="password" placeholder="github_pat_..."><div class="row"><button class="b" onclick="saveTok()">保存して読み込む</button></div></div>`;
+  return `<div class="card"><input id="tk" type="password" placeholder="github_pat_..."><div class="row"><button class="b" onclick="saveTok()">トークン入力</button></div></div>`;
 }
 
 function renderMake() {
@@ -605,6 +637,7 @@ function renderAttach() {
     </label>
     ${att.blob ? `<button class="mini wide" onclick="clearAttach()">元の画像に戻す</button>` : ''}
     <input type="text" id="attName" placeholder="名前" value="${esc(att.name)}" oninput="att.name=this.value" autocomplete="off">
+    <div class="chips gcs" id="attGc">${GAL_CATS.map(([n]) => `<button class="chip${att.gc === n ? ' on' : ''}" data-gc="${n}" onclick="setAttGc('${n}')">${n}</button>`).join('')}</div>
     <div class="row two"><button class="sub" id="btnGalQuit" onclick="quitGalEdit()">編集をやめる</button><button class="b" id="btnGalSave" onclick="overwriteGallery()">${ICON.save}上書き保存</button></div>
   </div>`;
   return `<div class="card attach">
@@ -615,10 +648,16 @@ function renderAttach() {
     </label>
     ${att.url ? `<button class="mini wide" onclick="clearAttach()">画像を外す</button>` : ''}
     <input type="text" id="attName" placeholder="名前" value="${esc(att.name)}" oninput="att.name=this.value" autocomplete="off">
+    <div class="chips gcs" id="attGc">${GAL_CATS.map(([n]) => `<button class="chip${att.gc === n ? ' on' : ''}" data-gc="${n}" onclick="setAttGc('${n}')">${n}</button>`).join('')}</div>
     <button class="b wide" id="btnGalSave" ${att.blob ? '' : 'disabled'} onclick="saveGallery()">${ICON.save}保存する</button>
   </div>`;
 }
 window.att = att;
+window.setAttGc = n => {
+  att.gc = n;
+  if (!gEdit) LS.set('pr_galcat_save', n);
+  document.querySelectorAll('#attGc .chip').forEach(b => b.classList.toggle('on', b.dataset.gc === n));
+};
 
 window.clearRow = key => {
   st.sel[key] = null;
@@ -703,7 +742,7 @@ function pickItem(key, id) {
   st.outputEdit = null;
   st.open = key;
   st.list = '';
-  if (key === 'lock') { U.fixedText = it.text; scheduleSave(); }
+  if (key === 'lock') rememberQuality(st.sel[key]);
   bumpUse(id);
   hideSug();
   render({ keepFocus: 'in_' + key });
@@ -724,7 +763,7 @@ function showSug(key, q, forceAll) {
   const filtered = [];
   for (const g of groups) {
     let items = filtering ? g.items.filter(it => (it.label || '').includes(s) || (it.text || '').includes(s)) : g.items;
-    if (listSort !== 'def' && slot.kind !== 'lock') items = sortList(items, listSort);
+    if (listSort !== 'def') items = sortList(items, listSort);
     if (items.length) filtered.push({ group: g.group, items: items.slice(0, filtering ? 40 : 200) });
   }
   if (!filtered.length) { box.hidden = true; box.innerHTML = ''; return; }
@@ -732,7 +771,7 @@ function showSug(key, q, forceAll) {
   box.dataset.key = key;
   const single = filtered.length === 1;
   const curId = st.sel[key] && st.sel[key].id;
-  const sorts = slot.kind === 'lock' ? '' : `<div class="sorts">${SORTS.map(([k, n]) => `<button class="sc${listSort === k ? ' on' : ''}" data-sort="${k}">${n}</button>`).join('')}</div>`;
+  const sorts = `<div class="sorts">${SORTS.map(([k, n]) => `<button class="sc${listSort === k ? ' on' : ''}" data-sort="${k}">${n}</button>`).join('')}</div>`;
   const opt = it => `<button class="opt${curId === it.id ? ' cur' : ''}" data-id="${esc(it.id)}">${saved && !saved.has(it.id) ? '<span class="mi">未</span>' : ''}${esc(it.label)}</button>`;
   box.innerHTML = sorts + filtered.map(g => {
     if (single) return g.items.map(opt).join('');
@@ -804,6 +843,7 @@ window.clearAttach = () => {
 function resetAttach() {
   if (att.url && att.blob) URL.revokeObjectURL(att.url);
   att.blob = null; att.thumb = null; att.url = ''; att.name = '';
+  att.gc = LS.get('pr_galcat_save', 'ポーズ');
 }
 function showGalEditImg(id) {
   const g = galById(id);
@@ -842,6 +882,7 @@ window.overwriteGallery = async () => {
     g.text = text;
     g.snap = snapshot();
     g.name = (att.name || '').trim() || g.name || (st.sel.pose && st.sel.pose.label) || 'プロンプト';
+    g.gc = att.gc || gcOf(g);
     g.ed = now();
     const ok = await saveUser(false);
     if (ok && g.img !== old.img) { delFile(old.img).catch(() => {}); if (old.thumb && old.thumb !== g.thumb) delFile(old.thumb).catch(() => {}); }
@@ -871,7 +912,7 @@ window.saveGallery = async () => {
     imgCache.set(GAL_DIR + id + '_t.jpg', URL.createObjectURL(att.thumb));
     imgCache.set(GAL_DIR + id + '.jpg', URL.createObjectURL(att.blob));
     U.gallery = U.gallery || [];
-    U.gallery.unshift({ id, at: now(), name, text, snap: snapshot(), img: GAL_DIR + id + '.jpg', thumb: GAL_DIR + id + '_t.jpg', n: 0, last: '' });
+    U.gallery.unshift({ id, at: now(), name, gc: att.gc || 'ポーズ', text, snap: snapshot(), img: GAL_DIR + id + '.jpg', thumb: GAL_DIR + id + '_t.jpg', n: 0, last: '' });
     const ok = await saveUser(false);
     resetAttach();
     render();
@@ -939,14 +980,33 @@ function itemOf(kind, id) {
   if (kind === 'pose') { const p = poseById(id); return p && { label: p.title, text: p.body, zoom: p.zoom }; }
   const p = partById(id); return p && { label: p.label, text: p.text };
 }
+function galLive() { const del = new Set(U.galleryDel || []); return (U.gallery || []).filter(g => !del.has(g.id)); }
+function galImgFor(kind, id) {
+  let best = null, bs = '';
+  for (const g of galLive()) {
+    const sel = (g.snap && g.snap.sel) || {};
+    const hit = kind === 'pose' ? !!(sel.pose && sel.pose.id === id) : Object.entries(sel).some(([k, v]) => k !== 'pose' && v && legacyId(k, v) === id);
+    if (!hit) continue;
+    const s = [g.ed || '', g.at || ''].sort().pop();
+    if (!best || s > bs) { best = g; bs = s; }
+  }
+  return best;
+}
 window.editItem = (kind, id) => {
   const it = itemOf(kind, id);
   if (!it) return;
+  const gi = galImgFor(kind, id);
   modal(`<div class="mt">編集</div>
+    ${gi ? `<div class="edImg"><img id="edImg" alt=""></div>` : ''}
     <input type="text" id="edLab" value="${esc(it.label)}" placeholder="タイトル">
     <textarea id="edTx" placeholder="本文">${esc(it.text || '')}</textarea>
     ${kind === 'pose' ? `<textarea id="edZm" class="short" placeholder="ズーム">${esc(it.zoom || '')}</textarea>` : ''}
     <div class="row two"><button class="sub" onclick="closeModal()">キャンセル</button><button class="b" id="edSave">保存</button></div>`);
+  if (gi) {
+    const im = $('edImg'), th = imgCache.get(gi.thumb) || imgCache.get(gi.img);
+    if (th) { im.src = th; im.parentNode.classList.add('ld'); }
+    else fetchImg(gi.thumb || gi.img).then(u => { if (u && im.isConnected) { im.src = u; im.parentNode.classList.add('ld'); } });
+  }
   $('edSave').onclick = () => {
     const label = $('edLab').value.trim();
     const text = $('edTx').value;
@@ -987,17 +1047,20 @@ window.delItem = async (kind, id) => {
 
 /* ---------- ギャラリー ---------- */
 const GAL_SORTS = SORTS.filter(s => s[0] !== 'def');
-function galList() { return sortList((U.gallery || []).filter(g => !(U.galleryDel || []).includes(g.id)), galSort, g => g.name || ''); }
+function galList() { return sortList(galLive().filter(g => gcOf(g) === galCat), galSort, g => g.name || ''); }
 function renderGal() {
   if (!D) return tokenCard();
   const list = galList();
-  return `<div class="card">${sortBar(galSort, 'setGalSort', GAL_SORTS)}</div>
+  const cnt = {};
+  for (const g of galLive()) cnt[gcOf(g)] = (cnt[gcOf(g)] || 0) + 1;
+  return `<div class="card"><div class="chips gcs">${GAL_CATS.map(([n]) => `<button class="chip${galCat === n ? ' on' : ''}" onclick="setGalCat('${n}')">${n}${cnt[n] ? `<span class="gcn">${cnt[n]}</span>` : ''}</button>`).join('')}</div>${sortBar(galSort, 'setGalSort', GAL_SORTS)}</div>
   ${list.length ? `<div class="grid">${list.map(g => `<div class="gt" data-id="${esc(g.id)}">
       <div class="ph"><img data-src="${esc(g.thumb || g.img)}" alt=""></div>
       <div class="gn">${esc(g.name || '')}</div>
     </div>`).join('')}</div>` : `<div class="card empty">${ICON.gal}<span>まだない</span></div>`}`;
 }
 window.setGalSort = k => { galSort = k; LS.set('pr_sort_gal', k); render(); };
+window.setGalCat = n => { galCat = n; LS.set('pr_galcat', n); render(); };
 let imgQ = [], imgBusy = 0;
 function fetchImg(path) {
   if (imgCache.has(path)) return Promise.resolve(imgCache.get(path));
@@ -1131,7 +1194,8 @@ function openGal(id, from) {
 function snapRowText(slot, v) {
   if (!v) return '';
   if (v.text != null && v.text !== '') return v.text;
-  if (!v.custom && v.id) { const cur = flatOptions(slot).find(x => x.id === v.id); if (cur) return cur.text || ''; }
+  const id = legacyId(slot.key, v);
+  if (!v.custom && id) { const cur = flatOptions(slot).find(x => x.id === id); if (cur) return cur.text || ''; }
   return '';
 }
 function snapAssemble(snap) {
@@ -1149,6 +1213,7 @@ function editGal(id) {
   resetAttach();
   gEdit = { id };
   att.name = g.name || '';
+  att.gc = gcOf(g);
   showGalEditImg(id);
   tab = 'make'; LS.set('pr_tab', tab);
   render(); window.scrollTo(0, 0);
@@ -1157,10 +1222,21 @@ function applyGal(id) {
   const g = galById(id);
   if (!g) return;
   if (gEdit) { gEdit = null; resetAttach(); }
-  restoreSnap(g.snap);
-  if (g.text && assemble() !== g.text) st.outputEdit = g.text;
-  const ed = SLOTS.find(slot => st.sel[slot.key] && st.sel[slot.key].edited && resolvedText(slot.key));
-  if (ed) st.open = ed.key;
+  const keys = (GAL_CATS.find(c => c[0] === gcOf(g)) || [])[1];
+  if (!keys) {
+    restoreSnap(g.snap);
+    if (g.text && assemble() !== g.text) st.outputEdit = g.text;
+    const ed = SLOTS.find(slot => st.sel[slot.key] && st.sel[slot.key].edited && resolvedText(slot.key));
+    if (ed) st.open = ed.key;
+  } else {
+    const sel = (g.snap && g.snap.sel) || {};
+    for (const k of keys) st.sel[k] = restoreRow(SLOTS.find(s => s.key === k), sel[k]);
+    ensureLock();
+    st.outputEdit = null;
+    const ed = keys.find(k => st.sel[k] && st.sel[k].edited && resolvedText(k));
+    st.open = ed || '';
+  }
+  st.list = ''; hideSug();
   g.n = (g.n || 0) + 1; g.last = now();
   scheduleSave();
   tab = 'make'; LS.set('pr_tab', tab);
@@ -1168,86 +1244,25 @@ function applyGal(id) {
   status('反映したよ', true);
 }
 
-/* ---------- 追加 ---------- */
-function renderAdd() {
-  if (!D) return tokenCard();
-  const cats = [...new Set(allParts().map(p => p.cat))];
-  const sel = LS.get('pr_addcat', 'ポーズ・カメラ');
-  const subs = sel === 'ポーズ・カメラ' ? [] : [...new Set(allParts().filter(p => p.cat === sel).map(p => p.sub))];
-  return `<div class="card addf">
-    <div class="bt">${ICON.add}<span>追加</span></div>
-    <select id="na_cat" onchange="setAddCat(this.value)">
-      <option ${sel === 'ポーズ・カメラ' ? 'selected' : ''}>ポーズ・カメラ</option>
-      ${cats.map(c => `<option ${c === sel ? 'selected' : ''}>${esc(c)}</option>`).join('')}
-    </select>
-    ${sel === 'ポーズ・カメラ' ? '' : `<input id="na_sub" list="na_subs" placeholder="小分類" autocomplete="off" value="${esc(subs[0] || '')}"><datalist id="na_subs">${subs.map(s => `<option value="${esc(s)}">`).join('')}</datalist>`}
-    <input id="na_lab" type="text" placeholder="タイトル" autocomplete="off">
-    <textarea id="na_tx" placeholder="本文"></textarea>
-    ${sel === 'ポーズ・カメラ' ? `<textarea id="na_zm" class="short" placeholder="ズーム"></textarea>` : ''}
-    <button class="b wide" onclick="addPart()">${ICON.add}追加する</button>
-  </div>`;
-}
-window.setAddCat = v => { LS.set('pr_addcat', v); render(); };
-window.addPart = () => {
-  const cat = $('na_cat').value.trim();
-  const label = $('na_lab').value.trim();
-  const text = $('na_tx').value;
-  if (!cat || !label) { status('タイトルを入れてね', false); return; }
-  if (cat === 'ポーズ・カメラ') {
-    U.posesExtra = U.posesExtra || [];
-    U.posesExtra.push({ id: uid(), title: label, body: text, zoom: ($('na_zm') && $('na_zm').value) || '', at: now() });
-  } else {
-    const sub = ($('na_sub') && $('na_sub').value.trim()) || cat;
-    U.partsExtra.push({ id: uid(), cat, sub, label, text, tags: [], at: now() });
-  }
-  saveUser(false).then(ok => { if (ok) status('追加したよ', true); });
-  status('追加したよ', true);
-  render();
-};
-
 function renderIo() {
-  const fx = U.fixedText || DEFAULT_FIXED;
   return `${!D ? tokenCard() : ''}
   <div class="card">
-    <input id="tk" type="password" placeholder="${tok() ? '保存済み（変更時のみ入力）' : 'github_pat_...'}">
-    <div class="row"><button class="b" onclick="saveTok()">保存して読み込む</button></div>
+    <label class="pick slim"><span class="pi">${ICON.io}</span><span>TSVファイルで取り込む</span><input type="file" id="tsv" accept=".tsv,.txt,text/tab-separated-values" onchange="impTsv(event)"></label>
   </div>
   <div class="card">
-    <b>固定文</b>
-    <div class="row">
-      <select onchange="setFixedPreset(this.value)">
-        ${FIXED_PRESETS.map(p => `<option value="${esc(p.label)}" ${p.text === fx ? 'selected' : ''}>${esc(p.label)}</option>`).join('')}
-        <option value="__custom" ${FIXED_PRESETS.every(p => p.text !== fx) ? 'selected' : ''}>直接入力</option>
-      </select>
-    </div>
-    <div class="row"><textarea id="fixedTx" onchange="setFixed(this.value)">${esc(fx)}</textarea></div>
+    <div class="bt">${ICON.copy}<span>TSVテキストで取り込む</span></div>
+    <textarea id="tsvTx" class="tsvtx" spellcheck="false" autocomplete="off" autocapitalize="off" oninput="setTsvDraft(this.value)">${esc(tsvDraft)}</textarea>
+    <button class="b wide" id="btnTsvTx" onclick="impTsvPaste()">${ICON.io}取り込む</button>
   </div>
   <div class="card">
-    <label class="pick slim"><span class="pi">${ICON.io}</span><span>TSVを取り込む</span><input type="file" id="tsv" accept=".tsv,.txt,text/tab-separated-values" onchange="impTsv(event)"></label>
+    <button class="b wide xl" onclick="dlXlsx()">${ICON.save}エクセルに書き出し</button>
   </div>
-  <div class="card">
-    <div class="row">
-      <button class="b" onclick="dlXlsx()">エクセルに保存</button>
-      <button class="sub" onclick="saveUser(true)">保存</button>
-    </div>
-  </div>`;
+  ${D ? `<div class="card">
+    <input id="tk" type="password" placeholder="${tok() ? '保存済み' : 'github_pat_...'}">
+    <button class="sub wide" onclick="saveTok()">トークン入力</button>
+  </div>` : ''}`;
 }
-window.setFixedPreset = lab => {
-  if (lab === '__custom') return;
-  const p = FIXED_PRESETS.find(x => x.label === lab);
-  if (!p) return;
-  U.fixedText = p.text;
-  st.sel.lock = { id: 'preset:' + p.label, label: p.label, text: p.text };
-  st.outputEdit = null;
-  scheduleSave(); render();
-};
-window.setFixed = t => {
-  U.fixedText = t;
-  const pr = FIXED_PRESETS.find(p => p.text === t);
-  st.sel.lock = { id: pr ? 'preset:' + pr.label : 'preset:設定', label: pr ? pr.label : '設定', text: t };
-  st.outputEdit = null;
-  scheduleSave();
-};
+window.setTsvDraft = v => { tsvDraft = v; };
 
 function parseTsv(text) {
   const src = text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
@@ -1408,9 +1423,20 @@ function impParts(rows, head, mode) {
 window.impTsv = async ev => {
   const f = ev.target.files && ev.target.files[0];
   if (!f) return;
-  const all = parseTsv(await f.text());
+  const text = await f.text();
   ev.target.value = '';
-  if (all.length < 2) { status('取り込む行がないよ', false); return; }
+  await impTsvText(text);
+};
+window.impTsvPaste = async () => {
+  const el = $('tsvTx');
+  const v = el ? el.value : tsvDraft;
+  if (!String(v || '').trim()) { status('TSVを貼り付けてね', false); return; }
+  tsvDraft = v;
+  if (await impTsvText(v)) { tsvDraft = ''; const e2 = $('tsvTx'); if (e2) e2.value = ''; }
+};
+async function impTsvText(text) {
+  const all = parseTsv(text);
+  if (all.length < 2) { status('取り込む行がないよ', false); return false; }
   const head = all[0].map(s => String(s).trim());
   const rows = all.slice(1);
   const ti = head.indexOf('タイトル');
@@ -1427,10 +1453,10 @@ window.impTsv = async ev => {
   if (kind === 'pose') { const ci = head.indexOf('ポーズ'); cats = ci >= 0 ? [...new Set(rows.map(c => poseCat(String(c[ci] || '').trim())).filter(Boolean))] : []; }
   else { const ci = head.indexOf('分類') >= 0 ? head.indexOf('分類') : head.indexOf('今のタブ'); cats = ci >= 0 ? [...new Set(rows.map(c => String(c[ci] || '').trim() || '服装'))] : ['服装']; }
   const mode = await impMode(kind, rows.length, cats);
-  if (!mode) return;
+  if (!mode) return false;
   if (mode === 'rep') {
-    if (kind === 'pose' && !cats.length) { status('ポーズ列がないと入れ替えできないよ', false); return; }
-    if (!(await ask(`${cats.join('・')} を入れ替えますか？`, '入れ替える', 'やめる'))) return;
+    if (kind === 'pose' && !cats.length) { status('ポーズ列がないと入れ替えできないよ', false); return false; }
+    if (!(await ask(`${cats.join('・')} を入れ替えますか？`, '入れ替える', 'やめる'))) return false;
   }
   const n = kind === 'pose' ? impPoses(rows, head, mode) : impParts(rows, head, mode);
   refreshSel();
@@ -1439,7 +1465,8 @@ window.impTsv = async ev => {
   render();
   if (mode === 'rep') impResult('入れ替えたよ', [['削除', n.del], ['上書き', n.up], ['追加', n.add]]);
   else impResult('取り込んだよ', [['上書き', n.up], ['追加', n.add]]);
-};
+  return true;
+}
 
 function xlsxDownload(filename, sheets) {
   function crc32(u) { let c = ~0; for (let i = 0; i < u.length; i++) { c ^= u[i]; for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1)); } return ~c >>> 0; }
@@ -1533,7 +1560,6 @@ function render(opt) {
   if (tab === 'make') app.innerHTML = renderMake();
   else if (tab === 'look') app.innerHTML = renderLook();
   else if (tab === 'gal') app.innerHTML = renderGal();
-  else if (tab === 'add') app.innerHTML = renderAdd();
   else app.innerHTML = renderIo();
   renderDock();
   hydrateImgs();
@@ -1604,6 +1630,7 @@ async function boot() {
     if (!U.fixedText) U.fixedText = DEFAULT_FIXED;
     if (tok()) await loadRemote();
     else if (!D) tab = 'io';
+    migrateQuality();
     ensureLock();
     status(tok() ? '読み込んだよ' : (D ? '' : 'トークンを入れてね'), !!D);
     render();
