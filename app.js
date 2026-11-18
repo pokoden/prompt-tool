@@ -270,7 +270,28 @@ function allPoses() {
   let ix = 0;
   for (const p of (catalog().poses || [])) { ix++; if (!del.has(p.id)) out.push(Object.assign({ _ix: ix }, p, (U.poseEdit || {})[p.id] || {})); }
   for (const p of (U.posesExtra || [])) if (!del.has(p.id)) out.push(Object.assign({ _ix: 1e6 + ix++ }, p));
+  for (const p of out) p.cat = poseCat(p.cat);
   return out;
+}
+const POSE_CAT_MAP = { '足裏見せ': '足裏指見せ', '足指見せ': '足裏指見せ' };
+const poseCat = c => POSE_CAT_MAP[c] || c || '';
+function groupByFirst(arr, keyOf) {
+  const order = new Map();
+  arr.forEach((x, i) => { const k = keyOf(x); if (!order.has(k)) order.set(k, i); });
+  return arr.map((x, i) => [x, i]).sort((a, b) => (order.get(keyOf(a[0])) - order.get(keyOf(b[0]))) || (a[1] - b[1])).map(a => a[0]);
+}
+let peopleSel = LS.get('pr_people', '');
+const PEOPLE = [['', 'すべて'], ['1人', '1人'], ['2人', '2人'], ['3人', '3人']];
+window.setPeople = v => { peopleSel = v || ''; LS.set('pr_people', peopleSel); st.list = ''; hideSug(); render(); };
+function savedPoseIds() {
+  const del = new Set(U.galleryDel || []);
+  const ids = new Set();
+  for (const g of (U.gallery || [])) {
+    if (del.has(g.id)) continue;
+    const v = g.snap && g.snap.sel && g.snap.sel.pose;
+    if (v && v.id) ids.add(v.id);
+  }
+  return ids;
 }
 function partById(id) { return allParts().find(p => p.id === id) || null; }
 function poseById(id) { return allPoses().find(p => p.id === id) || null; }
@@ -304,9 +325,16 @@ function usedClothTyp(exceptKey) {
   }
   return used;
 }
-function optionsFor(slot) {
+function optionsFor(slot, ppl) {
   if (slot.kind === 'pose') {
-    return [{ group: 'ポーズ', items: allPoses().map(p => ({ id: p.id, label: p.title, text: p.body, zoom: p.zoom, people: p.people, line: p.line, orient: p.orient, at: p.at, _ix: p._ix })) }]; // text is body only (poseEdit overwrites catalog body); rec.face is not included
+    const groups = new Map();
+    for (const p of allPoses()) {
+      if (ppl && p.people !== ppl) continue;
+      const g = p.cat || 'その他';
+      if (!groups.has(g)) groups.set(g, []);
+      groups.get(g).push(p);
+    }
+    return [...groups].map(([group, arr]) => ({ group, items: arr.map(p => ({ id: p.id, label: p.title, text: p.body, zoom: p.zoom, people: p.people, line: p.line, orient: p.orient, at: p.at, _ix: p._ix })) })); // text is body only (poseEdit overwrites catalog body); rec.face is not included
   }
   if (slot.kind === 'lock') {
     const cur = U.fixedText || DEFAULT_FIXED;
@@ -342,15 +370,15 @@ function groupedOptions(groups) {
   }
   return out;
 }
-function flatOptions(slot) {
+function flatOptions(slot, ppl) {
   const out = [];
-  for (const g of optionsFor(slot)) for (const it of g.items) out.push(Object.assign({ group: g.group }, it));
+  for (const g of optionsFor(slot, ppl)) for (const it of g.items) out.push(Object.assign({ group: g.group }, it));
   return out;
 }
-function findMatch(slot, raw) {
+function findMatch(slot, raw, ppl) {
   const s = String(raw || '').trim();
   if (!s) return null;
-  const all = flatOptions(slot);
+  const all = flatOptions(slot, ppl);
   let hit = all.find(it => it.label === s);
   if (hit) return recOf(hit);
   hit = all.find(it => it.id === s);
@@ -427,7 +455,7 @@ function applyInput(key, raw, openBody) {
     if (openBody) st.open = '';
     return;
   }
-  const rec = findMatch(slot, s);
+  const rec = findMatch(slot, s, slot.kind === 'pose' ? peopleSel : '');
   st.sel[key] = rec;
   if (key === 'lock' && rec && !rec.custom && rec.text) {
     U.fixedText = rec.text;
@@ -540,6 +568,7 @@ function renderMake() {
   const z = zoomText();
   const any = SLOTS.some(s => s.key !== 'lock' && st.sel[s.key]);
   return `<div class="bar"><div class="bt">${ICON.make}<span>組合</span></div><button class="mini" id="clrAll" ${any ? '' : 'disabled'} onclick="clearAll()">全部解除</button></div>
+  <div class="ppl"><span class="pl">人数</span><select id="pplSel" onchange="setPeople(this.value)">${PEOPLE.map(([v, n]) => `<option value="${v}"${peopleSel === v ? ' selected' : ''}>${n}</option>`).join('')}</select></div>
   <div id="form">${SLOTS.map(slot => {
     const v = st.sel[slot.key];
     const val = inputLabel(slot.key);
@@ -668,7 +697,8 @@ function showSug(key, q, forceAll) {
   const inp = $('in_' + key);
   if (!box || !inp) return;
   const s = String(q || '').trim();
-  const groups = optionsFor(slot);
+  const groups = optionsFor(slot, slot.kind === 'pose' ? peopleSel : '');
+  const saved = slot.kind === 'pose' ? savedPoseIds() : null;
   const filtering = !!(s && !forceAll);
   const filtered = [];
   for (const g of groups) {
@@ -682,7 +712,7 @@ function showSug(key, q, forceAll) {
   const single = filtered.length === 1;
   const curId = st.sel[key] && st.sel[key].id;
   const sorts = slot.kind === 'lock' ? '' : `<div class="sorts">${SORTS.map(([k, n]) => `<button class="sc${listSort === k ? ' on' : ''}" data-sort="${k}">${n}</button>`).join('')}</div>`;
-  const opt = it => `<button class="opt${curId === it.id ? ' cur' : ''}" data-id="${esc(it.id)}">${esc(it.label)}</button>`;
+  const opt = it => `<button class="opt${curId === it.id ? ' cur' : ''}" data-id="${esc(it.id)}">${saved && !saved.has(it.id) ? '<span class="mi">未</span>' : ''}${esc(it.label)}</button>`;
   box.innerHTML = sorts + filtered.map(g => {
     if (single) return g.items.map(opt).join('');
     const open = filtering || st.og.has(g.group);
@@ -789,6 +819,7 @@ function renderLook() {
   else if (q) for (const c of LOOK_CATS) items.push(...lookItems(c));
   if (q) items = items.filter(it => (it.label || '').includes(q) || (it.text || '').includes(q));
   items = sortList(items, look.sort);
+  if (look.sort === 'def') items = groupByFirst(items, it => it.sub || '');
   let list = '';
   if (cat || q) {
     if (!items.length) list = `<div class="card empty">ない</div>`;
