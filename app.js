@@ -1,4 +1,4 @@
-/* プロンプト作成 r286 */
+/* プロンプト作成 r287 */
 (() => {
 const API = 'https://api.github.com/repos/pokoden/slot-data/contents/';
 const PARTS_PATH = 'prompt/parts.json';
@@ -1249,40 +1249,196 @@ window.setFixed = t => {
   scheduleSave();
 };
 
-window.impTsv = async ev => {
-  const f = ev.target.files && ev.target.files[0];
-  if (!f) return;
-  const text = await f.text();
-  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter(l => l.trim());
-  if (!lines.length) return;
-  const head = lines[0].split('\t').map(s => s.trim());
+function parseTsv(text) {
+  const src = text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+  const rows = [];
+  let row = [], cell = '', i = 0, q = false, start = true;
+  while (i < src.length) {
+    const ch = src[i];
+    if (q) {
+      if (ch === '"') { if (src[i + 1] === '"') { cell += '"'; i += 2; continue; } q = false; i++; continue; }
+      cell += ch; i++; continue;
+    }
+    if (ch === '"' && start) { q = true; start = false; i++; continue; }
+    if (ch === '\t') { row.push(cell); cell = ''; start = true; i++; continue; }
+    if (ch === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; start = true; i++; continue; }
+    cell += ch; start = false; i++;
+  }
+  row.push(cell); rows.push(row);
+  return rows.filter(r => r.some(c => String(c).trim()));
+}
+const POSE_COLS = { 'タイトル': 'title', 'プロンプト': 'body', 'ズーム': 'zoom', 'オススメ画像向き': 'orient', '人数': 'people', 'ポーズ': 'cat', 'セリフ': 'line' };
+function impMode(kind, n, cats) {
+  return new Promise(res => {
+    const done = v => { closeModal(); res(v); };
+    modal(`<div class="impHd"><span class="pi">${ICON.io}</span><div><div class="mt">${kind === 'pose' ? 'ポーズ' : '部品'}を取り込む</div><div class="impSub">${n}件${cats.length ? '・' + esc(cats.join('・')) : ''}</div></div></div>
+      <button class="b wide impBtn" id="impAdd">追加・上書き</button>
+      <button class="sub wide impBtn impRep" id="impRep">入れ替え</button>
+      <button class="sub wide impBtn" id="impNo">やめる</button>`, 'small');
+    $('impAdd').onclick = () => done('add');
+    $('impRep').onclick = () => done('rep');
+    $('impNo').onclick = () => done('');
+    $('modal').onclick = ev => { if (ev.target === $('modal')) done(''); };
+  });
+}
+function impResult(title, lines) {
+  modal(`<div class="impHd"><span class="pi">${ICON.io}</span><div class="mt">${esc(title)}</div></div>
+    <div class="impRes">${lines.map(([k, v]) => `<div><span>${esc(k)}</span><b>${v}件</b></div>`).join('')}</div>
+    <button class="b wide" onclick="closeModal()">OK</button>`, 'small');
+}
+function refreshSel() {
+  for (const s of SLOTS) {
+    const v = st.sel[s.key];
+    if (!v || !v.id) continue;
+    const it = s.kind === 'pose' ? poseById(v.id) : partById(v.id);
+    if (!it) continue;
+    if (s.kind === 'pose') Object.assign(v, { label: it.title, text: it.body, zoom: it.zoom, people: it.people, line: it.line, orient: it.orient });
+    else Object.assign(v, { label: it.label, text: it.text });
+  }
+}
+function impPoses(rows, head, mode) {
+  const col = {};
+  head.forEach((h, i) => { if (POSE_COLS[h] && !(POSE_COLS[h] in col)) col[POSE_COLS[h]] = i; });
+  U.poseEdit = U.poseEdit || {}; U.posesExtra = U.posesExtra || [];
+  const groupOf = new Map(allPoses().filter(p => p.catGroup).map(p => [p.cat, p.catGroup]));
+  const isExtra = id => U.posesExtra.some(x => x.id === id);
+  const n = { up: 0, add: 0, del: 0 };
+  const recs = rows.map(c => {
+    const r = {};
+    for (const k in col) { const v = String(c[col[k]] ?? '').trim(); if (v) r[k] = v; }
+    if (r.cat) r.cat = poseCat(r.cat);
+    return r;
+  }).filter(r => r.title);
+  const reuse = new Map();
+  if (mode === 'rep') {
+    const cats = new Set(recs.map(r => r.cat).filter(Boolean));
+    const titles = new Set(recs.map(r => r.title));
+    for (const p of allPoses()) {
+      if (!cats.has(p.cat)) continue;
+      if (titles.has(p.title) && !reuse.has(p.title)) { reuse.set(p.title, p.id); continue; }
+      U.posesExtra = U.posesExtra.filter(x => x.id !== p.id);
+      U.poseDelete = [...new Set([...(U.poseDelete || []), p.id])];
+      n.del++;
+    }
+  }
+  const byTitle = new Map();
+  for (const p of allPoses()) if (!byTitle.has(p.title)) byTitle.set(p.title, p.id);
+  for (const r of recs) {
+    const id = reuse.get(r.title) || byTitle.get(r.title);
+    const patch = Object.assign({}, r);
+    if (r.cat && groupOf.has(r.cat)) patch.catGroup = groupOf.get(r.cat);
+    if (id) {
+      if (isExtra(id)) Object.assign(U.posesExtra.find(x => x.id === id), patch);
+      else U.poseEdit[id] = Object.assign({}, U.poseEdit[id] || {}, patch);
+      n.up++;
+    } else {
+      const it = Object.assign({ id: uid(), body: '', zoom: '', at: now() }, patch);
+      U.posesExtra.push(it);
+      byTitle.set(r.title, it.id);
+      n.add++;
+    }
+  }
+  return n;
+}
+function impParts(rows, head, mode) {
   const ix = n => head.indexOf(n);
-  let nOk = 0;
-  const byLabel = new Map(allParts().map(p => [p.cat + '\t' + p.label, p]));
-  for (const line of lines.slice(1)) {
-    const c = line.split('\t');
+  const recs = rows.map(c => {
     const get = name => { const i = ix(name); return i >= 0 ? (c[i] || '') : ''; };
     let cat = get('分類') || get('今のタブ') || '';
     let sub = get('小分類') || get('今の分類') || cat;
-    let label = get('名前') || get('タイトル') || '';
-    let body = get('本文') || get('新しい本文') || get('プロンプト') || '';
-    if (!label) continue;
+    const label = get('名前') || get('タイトル') || '';
+    const body = get('本文') || get('新しい本文') || get('プロンプト') || '';
     if (!cat) cat = '服装';
     if (!sub) sub = cat;
+    return { cat, sub, label, body, hasSub: !!(get('小分類') || get('今の分類')) };
+  }).filter(r => r.label);
+  const n = { up: 0, add: 0, del: 0 };
+  U.partsExtra = U.partsExtra || []; U.partsEdit = U.partsEdit || {};
+  if (mode === 'rep') {
+    const cats = new Set(recs.map(r => r.cat));
+    const keep = new Set(recs.map(r => r.cat + '\t' + r.label));
+    const reused = new Map();
+    for (const p of allParts()) {
+      if (!cats.has(p.cat)) continue;
+      const k = p.cat + '\t' + p.label;
+      if (keep.has(k) && !reused.has(k)) { reused.set(k, p.id); continue; }
+      U.partsExtra = U.partsExtra.filter(x => x.id !== p.id);
+      U.partsDelete = [...new Set([...(U.partsDelete || []), p.id])];
+      n.del++;
+    }
+    for (const r of recs) {
+      const k = r.cat + '\t' + r.label;
+      const id = reused.get(k);
+      const patch = { label: r.label };
+      if (r.body.trim()) patch.text = r.body;
+      if (r.hasSub) patch.sub = r.sub;
+      if (id) {
+        const ex = U.partsExtra.find(x => x.id === id);
+        if (ex) Object.assign(ex, patch); else U.partsEdit[id] = Object.assign({}, U.partsEdit[id] || {}, patch);
+        n.up++;
+      } else {
+        const it = { id: uid(), cat: r.cat, sub: r.sub, label: r.label, text: r.body, tags: [], at: now() };
+        U.partsExtra.push(it);
+        reused.set(k, it.id);
+        n.add++;
+      }
+    }
+    return n;
+  }
+  /* 追加・上書き：従来どおり */
+  const byLabel = new Map(allParts().map(p => [p.cat + '\t' + p.label, p]));
+  for (const r of recs) {
+    const { cat, sub, label, body } = r;
     const exist = byLabel.get(cat + '\t' + label) || allParts().find(p => p.label === label);
     if (exist) {
-      if ((U.partsExtra || []).some(x => x.id === exist.id)) {
+      if (U.partsExtra.some(x => x.id === exist.id)) {
         const e = U.partsExtra.find(x => x.id === exist.id);
         e.text = body; e.label = label;
       } else U.partsEdit[exist.id] = Object.assign({}, U.partsEdit[exist.id] || {}, { label, text: body });
+      n.up++;
     } else {
       const it = { id: uid(), cat, sub, label, text: body, tags: [], at: now() };
       U.partsExtra.push(it);
       byLabel.set(cat + '\t' + label, it);
+      n.add++;
     }
-    nOk++;
   }
-  scheduleSave(); status(nOk + '件取り込んだよ', true); ev.target.value = ''; render();
+  return n;
+}
+window.impTsv = async ev => {
+  const f = ev.target.files && ev.target.files[0];
+  if (!f) return;
+  const all = parseTsv(await f.text());
+  ev.target.value = '';
+  if (all.length < 2) { status('取り込む行がないよ', false); return; }
+  const head = all[0].map(s => String(s).trim());
+  const rows = all.slice(1);
+  const ti = head.indexOf('タイトル');
+  let kind = 'part';
+  if (ti >= 0 && head.includes('プロンプト') && !head.includes('分類') && !head.includes('名前')) {
+    if (['ズーム', 'オススメ画像向き', '人数', 'ポーズ', 'セリフ'].some(h => head.includes(h))) kind = 'pose';
+    else {
+      const pt = new Set(allPoses().map(p => p.title));
+      const ts = rows.map(c => String(c[ti] || '').trim()).filter(Boolean);
+      if (ts.length && ts.every(t => pt.has(t))) kind = 'pose';
+    }
+  }
+  let cats;
+  if (kind === 'pose') { const ci = head.indexOf('ポーズ'); cats = ci >= 0 ? [...new Set(rows.map(c => poseCat(String(c[ci] || '').trim())).filter(Boolean))] : []; }
+  else { const ci = head.indexOf('分類') >= 0 ? head.indexOf('分類') : head.indexOf('今のタブ'); cats = ci >= 0 ? [...new Set(rows.map(c => String(c[ci] || '').trim() || '服装'))] : ['服装']; }
+  const mode = await impMode(kind, rows.length, cats);
+  if (!mode) return;
+  if (mode === 'rep') {
+    if (kind === 'pose' && !cats.length) { status('ポーズ列がないと入れ替えできないよ', false); return; }
+    if (!(await ask(`${cats.join('・')} を入れ替えますか？`, '入れ替える', 'やめる'))) return;
+  }
+  const n = kind === 'pose' ? impPoses(rows, head, mode) : impParts(rows, head, mode);
+  refreshSel();
+  st.list = '';
+  scheduleSave();
+  render();
+  if (mode === 'rep') impResult('入れ替えたよ', [['削除', n.del], ['上書き', n.up], ['追加', n.add]]);
+  else impResult('取り込んだよ', [['上書き', n.up], ['追加', n.add]]);
 };
 
 function xlsxDownload(filename, sheets) {
