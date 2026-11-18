@@ -1,4 +1,4 @@
-/* プロンプト作成 r288 */
+/* プロンプト作成 r289 */
 (() => {
 const API = 'https://api.github.com/repos/pokoden/slot-data/contents/';
 const PARTS_PATH = 'prompt/parts.json';
@@ -802,6 +802,27 @@ function optBody(key, id) {
 }
 
 /* ---------- attach / gallery save ---------- */
+
+function rowAutoName(key) {
+  const v = st.sel[key];
+  if (!v) return '';
+  if (!v.custom) {
+    const title = String(v.label || '').trim();
+    if (title) return title;
+    return '';
+  }
+  const t = String(v.text || v.label || '').trim().split(/\n/)[0].trim();
+  return t.slice(0, 15);
+}
+function autoGalName() {
+  const cat = att.gc || 'ポーズ';
+  const keys = cat === '完成品' ? ['pose'] : ((GAL_CATS.find(c => c[0] === cat) || [])[1] || []);
+  return keys.map(rowAutoName).filter(Boolean).join('・');
+}
+function galSaveName() {
+  return (att.name || '').trim() || autoGalName();
+}
+
 function loadImg(file) {
   return new Promise((res, rej) => {
     const u = URL.createObjectURL(file);
@@ -881,7 +902,7 @@ window.overwriteGallery = async () => {
     }
     g.text = text;
     g.snap = snapshot();
-    g.name = (att.name || '').trim() || g.name || (st.sel.pose && st.sel.pose.label) || 'プロンプト';
+    g.name = galSaveName();
     g.gc = att.gc || gcOf(g);
     g.ed = now();
     const ok = await saveUser(false);
@@ -903,7 +924,7 @@ window.saveGallery = async () => {
   const btn = $('btnGalSave');
   if (btn) { btn.disabled = true; btn.textContent = '保存中…'; }
   const id = 'g_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-  const name = (att.name || '').trim() || (st.sel.pose && st.sel.pose.label) || 'プロンプト';
+  const name = galSaveName();
   try {
     const big = new Uint8Array(await att.blob.arrayBuffer());
     const th = new Uint8Array(await att.thumb.arrayBuffer());
