@@ -1,4 +1,4 @@
-/* プロンプト作成 r290 */
+/* プロンプト作成 r295 */
 (() => {
 const API = 'https://api.github.com/repos/pokoden/slot-data/contents/';
 const PARTS_PATH = 'prompt/parts.json';
@@ -14,6 +14,8 @@ const FIXED_PRESETS = [
 const PROP_GROUPS = [['家具'], ['小道具'], ['水回り設備'], ['拘束器具'], ['乗り物'], ['建物の一部']];
 const SLOTS = [
   { key: 'pose', title: 'ポーズ、カメラ', kind: 'pose' },
+  { key: 'face', title: '顔', kind: 'part', groups: [['顔']] },
+  { key: 'body', title: '体', kind: 'part', groups: [['体']] },
   { key: 'hair', title: '髪型', kind: 'part', groups: [['髪型']] },
   { key: 'expr', title: '表情', kind: 'part', groups: [['表情']] },
   { key: 'cl0', title: '服装', kind: 'clothes', slot: 0 },
@@ -30,12 +32,18 @@ const SLOTS = [
   { key: 'size', title: '画像サイズ', kind: 'part', groups: [['画像サイズ']] },
   { key: 'lock', title: '品質向上', kind: 'part', groups: [['品質向上']] }
 ];
+/* 完成文の並び。あとで変えるときはここだけ直す（作成の行順と揃える） */
+const JOIN_KEYS = SLOTS.map(s => s.key);
+const CAT_ALIAS = { '顔モデル': '顔', '体型モデル': '体' };
+const normCat = c => CAT_ALIAS[c] || c;
 const Q_CAT = '品質向上';
 const QID = l => Q_CAT + '_' + l;
-const GAL_CATS = [['ポーズ', ['pose']], ['髪型', ['hair']], ['表情', ['expr']], ['服装', ['cl0', 'cl1', 'cl2']], ['アクセサリー', ['acc0', 'acc1']], ['背景セット', ['bg']], ['壁', ['wall']], ['床', ['floor']], ['道具', ['prop0', 'prop1']], ['完成品', null]];
+const GAL_CATS = [['ポーズ', ['pose']], ['顔', ['face']], ['体', ['body']], ['髪型', ['hair']], ['表情', ['expr']], ['服装', ['cl0', 'cl1', 'cl2']], ['アクセサリー', ['acc0', 'acc1']], ['背景セット', ['bg']], ['壁', ['wall']], ['床', ['floor']], ['道具', ['prop0', 'prop1']], ['完成品', null]];
 const gcOf = g => (g && GAL_CATS.some(c => c[0] === g.gc)) ? g.gc : 'ポーズ';
 const LOOK_CATS = [
   { key: 'pose', name: 'ポーズ・カメラ', pose: true },
+  { key: 'face', name: '顔', cats: ['顔'] },
+  { key: 'body', name: '体', cats: ['体'] },
   { key: 'hair', name: '髪型', cats: ['髪型'] },
   { key: 'expr', name: '表情', cats: ['表情'] },
   { key: 'cloth', name: '服装', cats: ['服装'] },
@@ -443,8 +451,8 @@ function resolvedText(key) {
 function assemble() {
   if (st.outputEdit != null) return st.outputEdit;
   const chunks = [];
-  for (const s of SLOTS) {
-    const t = resolvedText(s.key);
+  for (const key of JOIN_KEYS) {
+    const t = resolvedText(key);
     if (t) chunks.push(t);
   }
   // pose body already includes face direction and gaze (poseEdit). Do not append rec.face / rec.gaze / face.
@@ -1221,7 +1229,10 @@ function snapRowText(slot, v) {
 }
 function snapAssemble(snap) {
   const sel = (snap && snap.sel) || {};
-  return SLOTS.map(slot => snapRowText(slot, sel[slot.key])).filter(Boolean).join('\n');
+  return JOIN_KEYS.map(key => {
+    const slot = SLOTS.find(s => s.key === key);
+    return slot ? snapRowText(slot, sel[key]) : '';
+  }).filter(Boolean).join('\n');
 }
 function editGal(id) {
   const g = galById(id);
@@ -1388,6 +1399,8 @@ function impParts(rows, head, mode) {
     const body = get('本文') || get('新しい本文') || get('プロンプト') || '';
     if (!cat) cat = '服装';
     if (!sub) sub = cat;
+    cat = normCat(cat);
+    sub = normCat(sub);
     return { cat, sub, label, body, hasSub: !!(get('小分類') || get('今の分類')) };
   }).filter(r => r.label);
   const n = { up: 0, add: 0, del: 0 };
@@ -1474,7 +1487,7 @@ async function impTsvText(text) {
   }
   let cats;
   if (kind === 'pose') { const ci = head.indexOf('ポーズ'); cats = ci >= 0 ? [...new Set(rows.map(c => poseCat(String(c[ci] || '').trim())).filter(Boolean))] : []; }
-  else { const ci = head.indexOf('分類') >= 0 ? head.indexOf('分類') : head.indexOf('今のタブ'); cats = ci >= 0 ? [...new Set(rows.map(c => String(c[ci] || '').trim() || '服装'))] : ['服装']; }
+  else { const ci = head.indexOf('分類') >= 0 ? head.indexOf('分類') : head.indexOf('今のタブ'); cats = ci >= 0 ? [...new Set(rows.map(c => normCat(String(c[ci] || '').trim() || '服装')))] : ['服装']; }
   const mode = await impMode(kind, rows.length, cats);
   if (!mode) return false;
   if (mode === 'rep') {
