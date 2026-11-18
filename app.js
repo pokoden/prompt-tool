@@ -1,4 +1,4 @@
-/* プロンプト作成 r284 */
+/* プロンプト作成 r286 */
 (() => {
 const API = 'https://api.github.com/repos/pokoden/slot-data/contents/';
 const PARTS_PATH = 'prompt/parts.json';
@@ -83,6 +83,7 @@ let galSort = LS.get('pr_sort_gal', 'add');
 let listSort = LS.get('pr_sort_list', 'def');
 let st = { sel: {}, open: '', list: '', listQ: '', showFull: false, outputEdit: null, og: new Set() };
 let att = { blob: null, url: '', thumb: null, name: '' };
+let gEdit = null; // { id } while overwriting a gallery entry from 作成
 let skipFocus = false;
 const imgCache = new Map();
 
@@ -159,7 +160,8 @@ function mergeUser(a, b) {
   for (const g of [...(e.gallery || []), ...(l.gallery || [])]) {
     if (!g || !g.id || gdel.has(g.id)) continue;
     const old = gm.get(g.id);
-    if (!old || (g.last || g.at || '') >= (old.last || old.at || '')) gm.set(g.id, g);
+    const stamp = x => [x.ed || '', x.last || '', x.at || ''].sort().pop();
+    if (!old || stamp(g) >= stamp(old)) gm.set(g.id, g);
   }
   out.gallery = [...gm.values()];
   delete out.hist; delete out.fav;
@@ -586,7 +588,7 @@ function renderMake() {
           <button class="chev${st.list === slot.key ? ' on' : ''}" onmousedown="event.preventDefault()" onclick="togList('${slot.key}')">▼</button>
         </div>
       </div>
-      ${open ? `<div class="body">${esc(resolvedText(slot.key))}</div>` : ''}
+      ${open ? (gEdit ? `<textarea class="body ed" data-k="${slot.key}" oninput="onBodyEdit('${slot.key}',this.value)">${esc(resolvedText(slot.key))}</textarea>` : `<div class="body">${esc(resolvedText(slot.key))}</div>`) : ''}
     </div>`;
   }).join('')}
   ${z ? `<div class="zrow"><button class="zbtn" id="btnZoomCopy" onclick="copyZoom()">${ICON.zoom}ズームをコピー</button></div>` : ''}
@@ -594,6 +596,17 @@ function renderMake() {
   ${renderAttach()}`;
 }
 function renderAttach() {
+  if (gEdit && !galById(gEdit.id)) gEdit = null;
+  if (gEdit) return `<div class="card attach ged">
+    <div class="bt">${ICON.gal}<span>ギャラリーを編集</span></div>
+    <label class="pick${att.url ? ' has' : ''}">
+      ${att.url ? `<img src="${att.url}" alt="">` : `<span class="pi">${ICON.cam}</span><span>画像を添付</span>`}
+      <input type="file" id="attFile" accept="image/*" onchange="onAttach(this)">
+    </label>
+    ${att.blob ? `<button class="mini wide" onclick="clearAttach()">元の画像に戻す</button>` : ''}
+    <input type="text" id="attName" placeholder="名前" value="${esc(att.name)}" oninput="att.name=this.value" autocomplete="off">
+    <div class="row two"><button class="sub" id="btnGalQuit" onclick="quitGalEdit()">編集をやめる</button><button class="b" id="btnGalSave" onclick="overwriteGallery()">${ICON.save}上書き保存</button></div>
+  </div>`;
   return `<div class="card attach">
     <div class="bt">${ICON.gal}<span>ギャラリーに保存</span></div>
     <label class="pick${att.url ? ' has' : ''}">
@@ -618,6 +631,7 @@ window.clearAll = async () => {
   if (!(await ask('全部解除する？'))) return;
   for (const s of SLOTS) if (s.key !== 'lock') st.sel[s.key] = null;
   st.outputEdit = null; st.open = ''; st.list = ''; hideSug();
+  if (gEdit) { gEdit = null; resetAttach(); }
   render();
 };
 window.copyZoom = () => { const z = zoomText(); if (z) copyText(z); };
@@ -626,7 +640,14 @@ window.tapLab = key => {
 };
 window.onFocus = key => {
   if (skipFocus) return;
+  if (gEdit && resolvedText(key) && st.open !== key) { st.open = key; render({ keepFocus: 'in_' + key }); return; }
   if (resolvedText(key)) st.open = key;
+};
+window.onBodyEdit = (key, val) => {
+  const v = st.sel[key];
+  if (!v) return;
+  st.sel[key] = Object.assign({}, v, { text: val, edited: true });
+  st.outputEdit = null;
 };
 window.onType = (key, raw) => {
   const el = $('in_' + key);
@@ -769,12 +790,70 @@ window.onAttach = async el => {
     const big = await toJpeg(im, 1200, 0.85);
     const th = await toJpeg(im, 480, 0.8);
     URL.revokeObjectURL(u);
-    if (att.url) URL.revokeObjectURL(att.url);
+    if (att.url && att.blob) URL.revokeObjectURL(att.url);
     att.blob = big; att.thumb = th; att.url = URL.createObjectURL(th);
     render();
   } catch (e) { status(String(e.message || e), false); }
 };
-window.clearAttach = () => { if (att.url) URL.revokeObjectURL(att.url); att.blob = null; att.thumb = null; att.url = ''; render(); };
+window.clearAttach = () => {
+  if (att.url && att.blob) URL.revokeObjectURL(att.url);
+  att.blob = null; att.thumb = null; att.url = '';
+  if (gEdit) showGalEditImg(gEdit.id);
+  render();
+};
+function resetAttach() {
+  if (att.url && att.blob) URL.revokeObjectURL(att.url);
+  att.blob = null; att.thumb = null; att.url = ''; att.name = '';
+}
+function showGalEditImg(id) {
+  const g = galById(id);
+  if (!g) return;
+  att.url = imgCache.get(g.img) || imgCache.get(g.thumb) || '';
+  if (!att.url) fetchImg(g.thumb || g.img).then(u => {
+    if (u && gEdit && gEdit.id === id && !att.blob) { att.url = u; if (tab === 'make') render(); }
+  });
+}
+window.quitGalEdit = () => {
+  gEdit = null;
+  resetAttach();
+  render();
+};
+window.overwriteGallery = async () => {
+  if (!gEdit) return;
+  const g = galById(gEdit.id);
+  if (!g) { gEdit = null; render(); return; }
+  if (!tok()) { status('トークンを入れてね', false); return; }
+  const text = assemble();
+  if (!text.trim()) { status('プロンプトが空だよ', false); return; }
+  if (!(await ask('上書きしますか？', '上書き', 'やめる'))) return;
+  const btn = $('btnGalSave');
+  if (btn) { btn.disabled = true; btn.textContent = '保存中…'; }
+  const old = { img: g.img, thumb: g.thumb };
+  try {
+    if (att.blob) {
+      const v = Date.now().toString(36);
+      const img = GAL_DIR + g.id + '_' + v + '.jpg', thumb = GAL_DIR + g.id + '_' + v + '_t.jpg';
+      await putFile(img, new Uint8Array(await att.blob.arrayBuffer()), 'gallery edit');
+      await putFile(thumb, new Uint8Array(await att.thumb.arrayBuffer()), 'gallery edit');
+      imgCache.set(thumb, URL.createObjectURL(att.thumb));
+      imgCache.set(img, URL.createObjectURL(att.blob));
+      g.img = img; g.thumb = thumb;
+    }
+    g.text = text;
+    g.snap = snapshot();
+    g.name = (att.name || '').trim() || g.name || (st.sel.pose && st.sel.pose.label) || 'プロンプト';
+    g.ed = now();
+    const ok = await saveUser(false);
+    if (ok && g.img !== old.img) { delFile(old.img).catch(() => {}); if (old.thumb && old.thumb !== g.thumb) delFile(old.thumb).catch(() => {}); }
+    gEdit = null;
+    resetAttach();
+    render();
+    if (ok) status('上書きしたよ', true);
+  } catch (e) {
+    status(String(e.message || e), false);
+    if (btn) { btn.disabled = false; btn.innerHTML = ICON.save + '上書き保存'; }
+  }
+};
 window.saveGallery = async () => {
   if (!att.blob) return;
   if (!tok()) { status('トークンを入れてね', false); return; }
@@ -794,8 +873,7 @@ window.saveGallery = async () => {
     U.gallery = U.gallery || [];
     U.gallery.unshift({ id, at: now(), name, text, snap: snapshot(), img: GAL_DIR + id + '.jpg', thumb: GAL_DIR + id + '_t.jpg', n: 0, last: '' });
     const ok = await saveUser(false);
-    if (att.url) URL.revokeObjectURL(att.url);
-    att.blob = null; att.thumb = null; att.url = ''; att.name = '';
+    resetAttach();
     render();
     if (ok) status('ギャラリーに保存したよ', true);
   } catch (e) {
@@ -1036,12 +1114,13 @@ function openGal(id, from) {
   $('gClose').onclick = ev => { ev.stopPropagation(); closeModal(); };
   $('gCopy').onclick = ev => { ev.stopPropagation(); copyText(g.text || ''); };
   $('gApply').onclick = ev => { ev.stopPropagation(); closeModal(); applyGal(id); };
-  $('gEdit').onclick = ev => { ev.stopPropagation(); editGal(id); };
+  $('gEdit').onclick = ev => { ev.stopPropagation(); closeModal(); editGal(id); };
   $('gDel').onclick = async ev => {
     ev.stopPropagation();
     if (!(await ask(`「${g.name || ''}」を削除する？`, '削除', 'やめる'))) { openGal(id); return; }
     U.gallery = (U.gallery || []).filter(x => x.id !== id);
     U.galleryDel = [...new Set([...(U.galleryDel || []), id])];
+    if (gEdit && gEdit.id === id) { gEdit = null; resetAttach(); }
     render();
     const ok = await saveUser(false);
     if (ok) status('削除したよ', true);
@@ -1062,54 +1141,22 @@ function snapAssemble(snap) {
 function editGal(id) {
   const g = galById(id);
   if (!g) return;
-  if (!g.snap || !g.snap.sel) g.snap = { sel: {} };
-  const sel = g.snap.sel;
-  const rows = SLOTS.filter(slot => sel[slot.key] && (snapRowText(slot, sel[slot.key]) || sel[slot.key].label));
-  const m = $('modal');
-  if (m._tidyFs) { m._tidyFs(); m._tidyFs = null; }
-  modal(`<div class="mt">編集</div>
-    <div class="gedit">
-      <div class="el">名前</div>
-      <input type="text" id="geName" value="${esc(g.name || '')}" autocomplete="off">
-      ${rows.length ? rows.map(slot => {
-        const v = sel[slot.key];
-        const lab = slot.key === 'lock' ? (v.label || '') : (v.custom ? '' : (v.label || ''));
-        return `<div class="el"><b>${esc(slot.title)}</b>${lab ? `<span>${esc(lab)}</span>` : ''}</div>
-          <textarea data-k="${slot.key}" class="${v.edited ? 'edd' : ''}">${esc(snapRowText(slot, v))}</textarea>`;
-      }).join('') : `<div class="el">本文</div><textarea id="geAll">${esc(g.text || '')}</textarea>`}
-    </div>
-    <div class="row two mfoot"><button class="sub" id="geCancel">キャンセル</button><button class="b" id="geSave">${ICON.save}保存</button></div>`, 'tall');
-  m.onclick = null;
-  $('geCancel').onclick = () => openGal(id);
-  $('geSave').onclick = () => {
-    g.name = $('geName').value.trim() || g.name || '';
-    const all = $('geAll');
-    if (all) g.text = all.value;
-    else {
-      m.querySelectorAll('textarea[data-k]').forEach(ta => {
-        const key = ta.dataset.k;
-        const slot = SLOTS.find(x => x.key === key);
-        const v = sel[key];
-        const nt = ta.value;
-        if (nt === snapRowText(slot, v)) return;
-        if (!nt.trim()) {
-          if (key === 'lock') sel[key] = { id: 'custom:', label: '', text: '', custom: true, edited: true };
-          else delete sel[key];
-          return;
-        }
-        sel[key] = Object.assign({}, v, { text: nt, edited: true });
-      });
-      g.text = snapAssemble(g.snap);
-    }
-    g.last = g.last || '';
-    saveUser(false).then(ok => { if (ok) status('保存したよ', true); });
-    render();
-    openGal(id);
-  };
+  restoreSnap(g.snap);
+  if (g.text && assemble() !== g.text) st.outputEdit = g.text;
+  const ed = SLOTS.find(slot => st.sel[slot.key] && st.sel[slot.key].edited && resolvedText(slot.key));
+  if (ed) st.open = ed.key;
+  st.list = ''; st.showFull = false; hideSug();
+  resetAttach();
+  gEdit = { id };
+  att.name = g.name || '';
+  showGalEditImg(id);
+  tab = 'make'; LS.set('pr_tab', tab);
+  render(); window.scrollTo(0, 0);
 }
 function applyGal(id) {
   const g = galById(id);
   if (!g) return;
+  if (gEdit) { gEdit = null; resetAttach(); }
   restoreSnap(g.snap);
   if (g.text && assemble() !== g.text) st.outputEdit = g.text;
   const ed = SLOTS.find(slot => st.sel[slot.key] && st.sel[slot.key].edited && resolvedText(slot.key));

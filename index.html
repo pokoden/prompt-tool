@@ -150,12 +150,6 @@ button.dan{color:var(--red);border-color:#5a2f33}
 .fsdots i{width:6px;height:6px;border-radius:3px;background:#4a3b2a}
 .fsdots i.on{width:16px;background:var(--gold)}
 .row.five{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}.row.five>*{min-width:0;padding:0 2px;white-space:nowrap}
-.gedit{display:flex;flex-direction:column;gap:2px}
-.gedit .el{margin-top:12px;color:var(--gold2);font-weight:800;display:flex;gap:8px;align-items:baseline}
-.gedit .el b{flex:0 0 auto;white-space:nowrap}
-.gedit .el span{color:var(--ink);font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-.gedit textarea{margin-top:6px;min-height:110px}
-.gedit .edd{border-color:var(--gold)}
 .mfoot{position:sticky;bottom:-14px;margin:10px -14px -14px;padding:10px 14px 14px;background:linear-gradient(180deg,rgba(20,16,21,0),#141015 30%)}
 .fsimg img{display:block;max-width:100%;max-height:100%;object-fit:contain;pointer-events:none}
 .fschrome{flex:0 0 auto;max-height:42dvh;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:linear-gradient(180deg,transparent,rgba(8,6,8,.92) 16px);display:flex;flex-direction:column}
@@ -163,6 +157,8 @@ button.dan{color:var(--red);border-color:#5a2f33}
 .fsprev{max-height:16dvh;margin:0 0 10px}
 .prev{padding:12px;border-radius:12px;background:#0d0a0c;border:1px solid #2a221c;max-height:200px;overflow:auto;white-space:pre-wrap}
 .prev.big{max-height:40dvh}
+textarea.body.ed{display:block;width:calc(100% - 16px);min-height:120px;max-height:none;white-space:pre-wrap;border-color:var(--gold);color:var(--ink)}
+.attach .row.two{margin-top:10px}
 </style>
 </head>
 <body>
@@ -177,6 +173,6 @@ button.dan{color:var(--red);border-color:#5a2f33}
 <div id="sheet"></div>
 <div id="modal"></div>
 <div id="sug" class="sug" hidden></div>
-<script src="app.js?v=285"></script>
+<script src="app.js?v=286"></script>
 </body>
 </html>
