@@ -1,4 +1,4 @@
-/* プロンプト作成 r289 */
+/* プロンプト作成 r290 */
 (() => {
 const API = 'https://api.github.com/repos/pokoden/slot-data/contents/';
 const PARTS_PATH = 'prompt/parts.json';
@@ -1243,7 +1243,9 @@ function applyGal(id) {
   const g = galById(id);
   if (!g) return;
   if (gEdit) { gEdit = null; resetAttach(); }
-  const keys = (GAL_CATS.find(c => c[0] === gcOf(g)) || [])[1];
+  const gc = gcOf(g);
+  const base = (GAL_CATS.find(c => c[0] === gc) || [])[1];
+  const keys = base && gc === '服装' ? base.concat(['acc0', 'acc1']) : base;
   if (!keys) {
     restoreSnap(g.snap);
     if (g.text && assemble() !== g.text) st.outputEdit = g.text;
