@@ -1,4 +1,4 @@
-/* プロンプト作成 r298 */
+/* プロンプト作成 r299 */
 (() => {
 const API = 'https://api.github.com/repos/pokoden/slot-data/contents/';
 const PARTS_PATH = 'prompt/parts.json';
@@ -41,7 +41,7 @@ const normCat = c => CAT_ALIAS[c] || c;
 const catDisp = c => c === '背景セット' ? '背景' : c;
 const Q_CAT = '品質向上';
 const QID = l => Q_CAT + '_' + l;
-const GAL_CATS = [['ポーズ', ['pose']], ['顔', ['face']], ['体', ['body']], ['髪型', ['hair']], ['表情', ['expr']], ['服装', ['cl0', 'cl1', 'cl2']], ['アクセサリー', ACC_KEYS], ['背景', ['bg']], ['家具', ['prop0', 'prop1', 'prop2']], ['完成品', null]];
+const GAL_CATS = [['ポーズ', ['pose']], ['顔', ['face']], ['体', ['body']], ['髪型', ['hair']], ['表情', ['expr']], ['服装', ['cl0', 'cl1', 'cl2']], ['アクセサリー', ACC_KEYS], ['背景', ['bg']], ['家具', ['prop0', 'prop1', 'prop2']], ['完成品', null], ['サンプル', null]];
 /* 旧ギャラリー分類名の読み替え（壁・床は無くなったのでポーズ扱い） */
 const GC_ALIAS = { '背景セット': '背景', '道具': '家具' };
 const gcName = n => GC_ALIAS[n] || n;
@@ -829,7 +829,7 @@ function rowAutoName(key) {
 }
 function autoGalName() {
   const cat = att.gc || 'ポーズ';
-  const keys = cat === '完成品' ? ['pose'] : ((GAL_CATS.find(c => c[0] === cat) || [])[1] || []);
+  const keys = (cat === '完成品' || cat === 'サンプル') ? ['pose'] : ((GAL_CATS.find(c => c[0] === cat) || [])[1] || []);
   return keys.map(rowAutoName).filter(Boolean).join('・');
 }
 function galSaveName() {
@@ -892,13 +892,21 @@ window.quitGalEdit = () => {
   resetAttach();
   render();
 };
+/* サンプルは画像だけでOK：品質向上しか入ってないときはプロンプト無しで保存 */
+function onlyLock() {
+  if (st.outputEdit != null && String(st.outputEdit).trim() && st.outputEdit !== resolvedText('lock')) return false;
+  return !SLOTS.some(sl => sl.key !== 'lock' && resolvedText(sl.key));
+}
 window.overwriteGallery = async () => {
   if (!gEdit) return;
   const g = galById(gEdit.id);
   if (!g) { gEdit = null; render(); return; }
   if (!tok()) { status('トークンを入れてね', false); return; }
   const text = assemble();
-  if (!text.trim()) { status('プロンプトが空だよ', false); return; }
+  /* 画像だけのサンプルを編集するときは、作成の行をくっつけない */
+  const wasBare = !String(g.text || '').trim() && !g.snap;
+  const bare = !text.trim() || (att.gc === 'サンプル' && (wasBare || onlyLock()));
+  if (bare && att.gc !== 'サンプル') { status('プロンプトが空だよ', false); return; }
   if (!(await ask('上書きしますか？', '上書き', 'やめる'))) return;
   const btn = $('btnGalSave');
   if (btn) { btn.disabled = true; btn.textContent = '保存中…'; }
@@ -913,9 +921,9 @@ window.overwriteGallery = async () => {
       imgCache.set(img, URL.createObjectURL(att.blob));
       g.img = img; g.thumb = thumb;
     }
-    g.text = text;
-    g.snap = snapshot();
-    g.name = galSaveName();
+    g.text = bare ? '' : text;
+    g.snap = bare ? null : snapshot();
+    g.name = galSaveName() || (bare ? 'サンプル' : '');
     g.gc = att.gc || gcOf(g);
     g.ed = now();
     const ok = await saveUser(false);
@@ -933,11 +941,12 @@ window.saveGallery = async () => {
   if (!att.blob) return;
   if (!tok()) { status('トークンを入れてね', false); return; }
   const text = assemble();
-  if (!text.trim()) { status('プロンプトが空だよ', false); return; }
+  const bare = !text.trim() || (att.gc === 'サンプル' && onlyLock());
+  if (bare && att.gc !== 'サンプル') { status('プロンプトが空だよ', false); return; }
   const btn = $('btnGalSave');
   if (btn) { btn.disabled = true; btn.textContent = '保存中…'; }
   const id = 'g_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-  const name = galSaveName();
+  const name = galSaveName() || (bare ? 'サンプル' : '');
   try {
     const big = new Uint8Array(await att.blob.arrayBuffer());
     const th = new Uint8Array(await att.thumb.arrayBuffer());
@@ -946,7 +955,7 @@ window.saveGallery = async () => {
     imgCache.set(GAL_DIR + id + '_t.jpg', URL.createObjectURL(att.thumb));
     imgCache.set(GAL_DIR + id + '.jpg', URL.createObjectURL(att.blob));
     U.gallery = U.gallery || [];
-    U.gallery.unshift({ id, at: now(), name, gc: att.gc || 'ポーズ', text, snap: snapshot(), img: GAL_DIR + id + '.jpg', thumb: GAL_DIR + id + '_t.jpg', n: 0, last: '' });
+    U.gallery.unshift({ id, at: now(), name, gc: att.gc || 'ポーズ', text: bare ? '' : text, snap: bare ? null : snapshot(), img: GAL_DIR + id + '.jpg', thumb: GAL_DIR + id + '_t.jpg', n: 0, last: '' });
     const ok = await saveUser(false);
     resetAttach();
     render();
@@ -1208,6 +1217,7 @@ function openGal(id, from) {
   if (!g) return;
   const ids = galList().map(x => x.id);
   const ix = ids.indexOf(id);
+  const bare = !String(g.text || '').trim() && !g.snap;
   const m = $('modal');
   if (m._tidyFs) { m._tidyFs(); m._tidyFs = null; }
   const dots = ids.length > 1 && ids.length <= 15 ? `<div class="fsdots">${ids.map((x, i) => `<i class="${i === ix ? 'on' : ''}"></i>`).join('')}</div>` : '';
@@ -1217,12 +1227,12 @@ function openGal(id, from) {
     <div class="fschrome">
       ${dots}
       <div class="mt">${esc(g.name || '')}</div>
-      <div class="prev fsprev">${esc(g.text || '')}</div>
-      <div class="row five">
+      ${bare ? '' : `<div class="prev fsprev">${esc(g.text || '')}</div>`}
+      <div class="row five${bare ? ' e3' : ''}">
         <button class="sub dan" id="gDel">削除</button>
         <button class="sub" id="gEdit">編集</button>
-        <button class="sub" id="gCopy">コピー</button>
-        <button class="b" id="gApply">反映</button>
+        ${bare ? '' : `<button class="sub" id="gCopy">コピー</button>
+        <button class="b" id="gApply">反映</button>`}
         <button class="sub" id="gClose">閉じる</button>
       </div>
     </div>
@@ -1244,8 +1254,8 @@ function openGal(id, from) {
   }, () => { galFs = !galFs; box.classList.toggle('only', galFs); });
   $('gSave').onclick = ev => { ev.stopPropagation(); saveImg(g); };
   $('gClose').onclick = ev => { ev.stopPropagation(); closeModal(); };
-  $('gCopy').onclick = ev => { ev.stopPropagation(); copyText(g.text || ''); };
-  $('gApply').onclick = ev => { ev.stopPropagation(); closeModal(); applyGal(id); };
+  if (!bare) $('gCopy').onclick = ev => { ev.stopPropagation(); copyText(g.text || ''); };
+  if (!bare) $('gApply').onclick = ev => { ev.stopPropagation(); closeModal(); applyGal(id); };
   $('gEdit').onclick = ev => { ev.stopPropagation(); closeModal(); editGal(id); };
   $('gDel').onclick = async ev => {
     ev.stopPropagation();
@@ -1295,6 +1305,7 @@ function applyGal(id) {
   if (!g) return;
   if (gEdit) { gEdit = null; resetAttach(); }
   const gc = gcOf(g);
+  if (!String(g.text || '').trim() && !g.snap) return;
   const base = (GAL_CATS.find(c => c[0] === gc) || [])[1];
   const keys = base && gc === '服装' ? base.concat(ACC_KEYS) : base;
   if (!keys) {
