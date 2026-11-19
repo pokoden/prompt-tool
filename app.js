@@ -1,4 +1,4 @@
-/* プロンプト作成 r302 */
+/* プロンプト作成 r303 */
 (() => {
 const API = 'https://api.github.com/repos/pokoden/slot-data/contents/';
 const PARTS_PATH = 'prompt/parts.json';
@@ -496,11 +496,12 @@ function snapshot() {
   for (const [k, v] of Object.entries(st.sel)) if (v) sel[k] = { id: v.id, label: v.label, text: v.text, typ: v.typ, custom: v.custom || undefined, edited: v.edited || undefined };
   return { sel };
 }
-function restoreRow(slot, v) {
+function restoreRow(slot, v, dropMissing) {
   if (!v) return null;
   let cur = null;
   const id = legacyId(slot.key, v);
   if (!v.custom && id) cur = flatOptions(slot).find(x => x.id === id);
+  if (dropMissing && !v.custom && id && !cur) return null;
   const out = cur ? recOf(cur) : Object.assign({}, v);
   if (cur && v.text != null && v.text !== '' && cur.text !== v.text) out.text = v.text;
   if (v.edited) out.edited = true;
@@ -517,6 +518,32 @@ function restoreSnap(s) {
   st.outputEdit = null;
   st.open = '';
 }
+const MAKE_KEY = 'pr_make';
+function persistMake() {
+  const snap = snapshot();
+  const s = { sel: snap.sel };
+  if (st.outputEdit != null) s.outputEdit = st.outputEdit;
+  LS.set(MAKE_KEY, s);
+}
+function restoreMakeState() {
+  if (!D) return;
+  const s = LS.get(MAKE_KEY, null);
+  if (!s || typeof s !== 'object' || !s.sel) return;
+  st.sel = {};
+  for (const slot of SLOTS) {
+    const v = s.sel[slot.key];
+    if (!v && slot.key === 'lock') { st.sel[slot.key] = undefined; continue; }
+    const row = restoreRow(slot, v, true);
+    st.sel[slot.key] = (slot.key === 'lock' && !row) ? undefined : row;
+  }
+  st.outputEdit = (s.outputEdit != null) ? s.outputEdit : null;
+  st.open = '';
+}
+function onLeavePage() {
+  persistMake();
+  /* トークン無しで強制的に取込になった tab=io は残さない。分類の切替は go() がすでに pr_tab を書く */
+  if (D && TABS.some(t => t[0] === tab)) LS.set('pr_tab', tab);
+}
 
 function applyInput(key, raw, openBody) {
   const slot = SLOTS.find(s => s.key === key);
@@ -531,6 +558,7 @@ function applyInput(key, raw, openBody) {
   st.sel[key] = rec;
   if (key === 'lock') rememberQuality(rec);
   if (openBody && rec && rec.text) st.open = key;
+  persistMake();
 }
 
 async function copyText(text) {
@@ -780,6 +808,7 @@ window.onBodyEdit = (key, val) => {
   if (!v) return;
   st.sel[key] = Object.assign({}, v, { text: val, edited: true });
   st.outputEdit = null;
+  persistMake();
 };
 window.onType = (key, raw) => {
   const el = $('in_' + key);
@@ -2083,7 +2112,7 @@ function renderDock() {
         <button class="b" id="fullCopy">${ICON.copy}コピー</button>
       </div>
     </div>`;
-    $('fullTx').oninput = ev => { st.outputEdit = ev.target.value; };
+    $('fullTx').oninput = ev => { st.outputEdit = ev.target.value; persistMake(); };
     $('fullCopy').onclick = () => copyText(assemble());
     $('fullClose').onclick = ev => { ev.stopPropagation(); st.showFull = false; render(); };
     sheet.onclick = ev => { if (ev.target === sheet) { st.showFull = false; render(); } };
@@ -2095,6 +2124,7 @@ function renderDock() {
 
 function render(opt) {
   hidePick();
+  persistMake();
   opt = opt || {};
   const keep = opt.keepFocus;
   const wasActive = keep && document.activeElement && document.activeElement.id === keep;
@@ -2182,6 +2212,7 @@ async function boot() {
     if (tok()) await loadRemote();
     else if (!D) tab = 'io';
     migrateQuality();
+    restoreMakeState();
     ensureLock();
     status(tok() ? '読み込んだよ' : (D ? '' : 'トークンを入れてね'), !!D);
     render();
@@ -2190,11 +2221,14 @@ async function boot() {
     if (cached) D = cached;
     status(String(e.message || e), false);
     if (!D) tab = 'io';
+    restoreMakeState();
     ensureLock();
     render();
   }
 }
 window.boot = boot;
 window.saveUser = saveUser;
+addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') onLeavePage(); });
+addEventListener('pagehide', onLeavePage);
 addEventListener('DOMContentLoaded', () => { bindOnce(); boot(); });
 })();
