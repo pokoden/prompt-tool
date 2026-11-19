@@ -1,4 +1,4 @@
-/* プロンプト作成 r301 */
+/* プロンプト作成 r302 */
 (() => {
 const API = 'https://api.github.com/repos/pokoden/slot-data/contents/';
 const PARTS_PATH = 'prompt/parts.json';
@@ -104,7 +104,28 @@ if (!GAL_CATS.some(c => c[0] === galCat)) galCat = 'ポーズ';
 let tsvDraft = '';
 let listSort = LS.get('pr_sort_list', 'def');
 let st = { sel: {}, open: '', list: '', listQ: '', showFull: false, outputEdit: null, og: new Set() };
-let att = { blob: null, url: '', thumb: null, name: '', gc: gcName(LS.get('pr_galcat_save', 'ポーズ')) };
+let att = { blob: null, url: '', thumb: null, name: '', gc: gcName(LS.get('pr_galcat_save', 'ポーズ')), gcs: [] };
+function normalizeCats(list) {
+  const allow = new Set(GAL_CATS.map(c => c[0]));
+  const out = [];
+  for (const n of list || []) {
+    const x = gcName(n);
+    if (allow.has(x) && !out.includes(x)) out.push(x);
+  }
+  return out;
+}
+function attCats() {
+  const list = normalizeCats(att.gcs);
+  if (list.length) return list;
+  const one = gcName(att.gc || 'ポーズ');
+  return [GAL_CATS.some(c => c[0] === one) ? one : 'ポーズ'];
+}
+(function initAttCats() {
+  const multi = LS.get('pr_galcats_save', null);
+  att.gcs = normalizeCats(Array.isArray(multi) ? multi : null);
+  if (!att.gcs.length) att.gcs = [GAL_CATS.some(c => c[0] === att.gc) ? att.gc : 'ポーズ'];
+  att.gc = att.gcs[0];
+})();
 let gEdit = null; // { id } while overwriting a gallery entry from 作成
 let skipFocus = false;
 const imgCache = new Map();
@@ -663,15 +684,72 @@ function renderAttach() {
     </label>`}
     ${att.url ? `<button class="mini wide" onclick="clearAttach()">${attList.length > 1 ? `${attList.length}枚を外す` : '画像を外す'}</button>` : ''}
     <input type="text" id="attName" placeholder="名前" value="${esc(att.name)}" oninput="att.name=this.value" autocomplete="off">
-    <div class="chips gcs" id="attGc">${GAL_CATS.map(([n]) => `<button class="chip${att.gc === n ? ' on' : ''}" data-gc="${n}" onclick="setAttGc('${n}')">${n}</button>`).join('')}</div>
-    <button class="b wide" id="btnGalSave" ${att.blob ? '' : 'disabled'} onclick="saveGallery()">${ICON.save}${attList.length > 1 ? `${attList.length}枚を保存する` : '保存する'}</button>
+    <div class="chips gcs" id="attGc">${GAL_CATS.map(([n]) => `<button class="chip${attCats().includes(n) ? ' on' : ''}" data-gc="${n}" onclick="setAttGc('${n}')">${n}</button>`).join('')}</div>
+    <button class="b wide" id="btnGalSave" ${att.blob ? '' : 'disabled'} onclick="saveGallery()">${saveBtnLabel()}</button>
   </div>`;
 }
 window.att = att;
+function saveBtnLabel() {
+  if (gEdit) return ICON.save + '上書き保存';
+  const n = att.blob ? attCats().length * attList.length : 0;
+  return ICON.save + (n > 1 ? `${n}件を保存する` : '保存する');
+}
+function syncSaveBtn() {
+  const btn = $('btnGalSave');
+  if (btn && !gEdit) btn.innerHTML = saveBtnLabel();
+}
+function catHasContent(gc) {
+  if (gc === 'サンプル') return true;
+  if (gc === '完成品') return !!String(assemble() || '').trim();
+  const keys = galRowKeys(gc) || [];
+  return keys.some(k => resolvedText(k));
+}
+function isBareCat(gc) {
+  if (gc !== 'サンプル') return false;
+  const text = assemble();
+  return !text.trim() || onlyLock();
+}
+function snapshotFor(gc) {
+  const full = snapshot();
+  if (gc === '完成品' || gc === 'サンプル') return full;
+  const keys = galRowKeys(gc);
+  if (!keys || !full || !full.sel) return full;
+  const sel = {};
+  for (const k of keys) if (full.sel[k]) sel[k] = full.sel[k];
+  return { sel };
+}
+function textFor(gc, bare) {
+  if (bare) return '';
+  if (gc === '完成品' || gc === 'サンプル') return assemble();
+  const keys = galRowKeys(gc) || [];
+  return keys.map(resolvedText).filter(Boolean).join('\n');
+}
+function markCatChips(bad) {
+  const set = new Set(bad || []);
+  document.querySelectorAll('#attGc .chip').forEach(b => b.classList.toggle('bad', set.has(b.dataset.gc)));
+}
+function galImgInUse(path, exceptId) {
+  if (!path) return false;
+  return galLive().some(x => x.id !== exceptId && (x.img === path || x.thumb === path));
+}
 window.setAttGc = n => {
-  att.gc = n;
-  if (!gEdit) LS.set('pr_galcat_save', n);
-  document.querySelectorAll('#attGc .chip').forEach(b => b.classList.toggle('on', b.dataset.gc === n));
+  if (gEdit) {
+    att.gc = n;
+    document.querySelectorAll('#attGc .chip').forEach(b => { b.classList.toggle('on', b.dataset.gc === n); b.classList.remove('bad'); });
+    return;
+  }
+  const cur = attCats();
+  const i = cur.indexOf(n);
+  if (i >= 0) {
+    if (cur.length === 1) return;
+    cur.splice(i, 1);
+  } else cur.push(n);
+  att.gcs = GAL_CATS.map(c => c[0]).filter(x => cur.includes(x));
+  att.gc = att.gcs[0];
+  LS.set('pr_galcats_save', att.gcs);
+  LS.set('pr_galcat_save', att.gc);
+  document.querySelectorAll('#attGc .chip').forEach(b => { b.classList.toggle('on', att.gcs.includes(b.dataset.gc)); b.classList.remove('bad'); });
+  syncSaveBtn();
 };
 
 window.clearRow = key => {
@@ -829,13 +907,21 @@ function rowAutoName(key) {
   const t = String(v.text || v.label || '').trim().split(/\n/)[0].trim();
   return t.slice(0, 15);
 }
-function autoGalName() {
-  const cat = att.gc || 'ポーズ';
+function autoGalName(gc) {
+  const cat = gc || att.gc || 'ポーズ';
   const keys = (cat === '完成品' || cat === 'サンプル') ? ['pose'] : ((GAL_CATS.find(c => c[0] === cat) || [])[1] || []);
   return keys.map(rowAutoName).filter(Boolean).join('・');
 }
-function galSaveName() {
-  return (att.name || '').trim() || autoGalName();
+function galSaveName(gcs) {
+  const typed = (att.name || '').trim();
+  if (typed) return typed;
+  const cats = gcs || (gEdit ? [att.gc || 'ポーズ'] : attCats());
+  const names = [], seen = new Set();
+  for (const c of cats) {
+    const n = autoGalName(c);
+    if (n && !seen.has(n)) { seen.add(n); names.push(n); }
+  }
+  return names.join('・');
 }
 
 function loadImg(file) {
@@ -901,7 +987,13 @@ window.clearAttach = () => {
 };
 function resetAttach() {
   dropAttList(); syncAtt(); att.name = '';
-  att.gc = gcName(LS.get('pr_galcat_save', 'ポーズ'));
+  const multi = LS.get('pr_galcats_save', null);
+  att.gcs = normalizeCats(Array.isArray(multi) ? multi : null);
+  if (!att.gcs.length) {
+    const one = gcName(LS.get('pr_galcat_save', 'ポーズ'));
+    att.gcs = [GAL_CATS.some(c => c[0] === one) ? one : 'ポーズ'];
+  }
+  att.gc = att.gcs[0];
 }
 function showGalEditImg(id) {
   const g = galById(id);
@@ -951,7 +1043,7 @@ window.overwriteGallery = async () => {
     g.gc = att.gc || gcOf(g);
     g.ed = now();
     const ok = await saveUser(false);
-    if (ok && g.img !== old.img) { delFile(old.img).catch(() => {}); if (old.thumb && old.thumb !== g.thumb) delFile(old.thumb).catch(() => {}); }
+    if (ok && g.img !== old.img) { if (!galImgInUse(old.img, g.id)) delFile(old.img).catch(() => {}); if (old.thumb && old.thumb !== g.thumb && !galImgInUse(old.thumb, g.id)) delFile(old.thumb).catch(() => {}); }
     gEdit = null;
     resetAttach();
     render();
@@ -964,43 +1056,50 @@ window.overwriteGallery = async () => {
 window.saveGallery = async () => {
   if (!att.blob) return;
   if (!tok()) { status('トークンを入れてね', false); return; }
-  const text = assemble();
-  const bare = !text.trim() || (att.gc === 'サンプル' && onlyLock());
-  if (bare && att.gc !== 'サンプル') { status('プロンプトが空だよ', false); return; }
+  const cats = attCats();
+  const empty = cats.filter(c => !catHasContent(c));
+  if (!cats.length || empty.length) { markCatChips(empty.length ? empty : GAL_CATS.map(c => c[0])); return; }
+  markCatChips([]);
   const btn = $('btnGalSave');
   const list = attList.slice();
-  const total = list.length;
-  const name = galSaveName() || (bare ? 'サンプル' : '');
+  const total = list.length * cats.length;
+  const name = galSaveName(cats);
   const at = now();
-  const snap = bare ? null : snapshot();
   U.gallery = U.gallery || [];
-  let done = 0, err = null;
+  let done = 0, doneImgs = 0, err = null;
   for (const a of list) {
-    if (btn) { btn.disabled = true; btn.textContent = total > 1 ? `保存中… ${done + 1}/${total}` : '保存中…'; }
-    const id = 'g_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const fileId = 'g_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const imgPath = GAL_DIR + fileId + '.jpg', thumbPath = GAL_DIR + fileId + '_t.jpg';
     try {
+      if (btn) { btn.disabled = true; btn.textContent = total > 1 ? `保存中… ${done + 1}/${total}` : '保存中…'; }
       const big = new Uint8Array(await a.blob.arrayBuffer());
       const th = new Uint8Array(await a.thumb.arrayBuffer());
-      await putFile(GAL_DIR + id + '.jpg', big, 'gallery add');
-      await putFile(GAL_DIR + id + '_t.jpg', th, 'gallery add');
-      imgCache.set(GAL_DIR + id + '_t.jpg', URL.createObjectURL(a.thumb));
-      imgCache.set(GAL_DIR + id + '.jpg', URL.createObjectURL(a.blob));
-      /* 選んだ順に並ぶように入れる */
-      U.gallery.splice(done, 0, { id, at, name, gc: att.gc || 'ポーズ', text: bare ? '' : text, snap: snap && JSON.parse(JSON.stringify(snap)), img: GAL_DIR + id + '.jpg', thumb: GAL_DIR + id + '_t.jpg', n: 0, last: '' });
-      done++;
+      await putFile(imgPath, big, 'gallery add');
+      await putFile(thumbPath, th, 'gallery add');
+      imgCache.set(thumbPath, URL.createObjectURL(a.thumb));
+      imgCache.set(imgPath, URL.createObjectURL(a.blob));
+      for (const gc of cats) {
+        if (btn && total > 1) btn.textContent = `保存中… ${done + 1}/${total}`;
+        const id = 'g_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+        const bare = isBareCat(gc);
+        const snap = bare ? null : snapshotFor(gc);
+        U.gallery.splice(done, 0, { id, at, name: name || (bare ? 'サンプル' : ''), gc, text: textFor(gc, bare), snap: snap && JSON.parse(JSON.stringify(snap)), img: imgPath, thumb: thumbPath, n: 0, last: '' });
+        done++;
+      }
+      doneImgs++;
     } catch (e) { err = String(e.message || e); break; }
   }
   const ok = done ? await saveUser(false) : true;
   if (!err) {
     resetAttach();
     render();
-    if (ok) status(total > 1 ? `${total}枚をギャラリーに保存したよ` : 'ギャラリーに保存したよ', true);
+    if (ok) status(total > 1 ? `${total}件をギャラリーに保存したよ` : 'ギャラリーに保存したよ', true);
     return;
   }
-  /* 失敗：保存できた分は外して、残りはそのまま（もう一回押せば続きから） */
-  { for (const a of list.slice(0, done)) { const i = attList.indexOf(a); if (i >= 0) { URL.revokeObjectURL(a.url); attList.splice(i, 1); } } syncAtt(); }
+  /* 失敗：保存できた画像は外して、残りはそのまま（もう一回押せば続きから） */
+  { for (const a of list.slice(0, doneImgs)) { const i = attList.indexOf(a); if (i >= 0) { URL.revokeObjectURL(a.url); attList.splice(i, 1); } } syncAtt(); }
   render();
-  if (err) status(total > 1 ? `${done + 1}枚目で失敗：${err}（${done}枚は保存済み、残り${total - done}枚はもう一回押すと続きから）` : err, false);
+  if (err) status(total > 1 ? `${doneImgs + 1}枚目で失敗：${err}（${done}件は保存済み、残り${list.length - doneImgs}枚はもう一回押すと続きから）` : err, false);
 };
 
 /* ---------- 確認 ---------- */
@@ -1548,7 +1647,7 @@ function openGal(id, from) {
     render();
     const ok = await saveUser(false);
     if (ok) status('削除したよ', true);
-    if (tok()) { delFile(g.img).catch(() => {}); if (g.thumb) delFile(g.thumb).catch(() => {}); }
+    if (tok()) { if (!galImgInUse(g.img, id)) delFile(g.img).catch(() => {}); if (g.thumb && !galImgInUse(g.thumb, id)) delFile(g.thumb).catch(() => {}); }
   };
 }
 /* text each row contributes for a gallery snap (same rule as restoreSnap) */
