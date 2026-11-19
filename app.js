@@ -1,4 +1,4 @@
-/* プロンプト作成 r300 */
+/* プロンプト作成 r301 */
 (() => {
 const API = 'https://api.github.com/repos/pokoden/slot-data/contents/';
 const PARTS_PATH = 'prompt/parts.json';
@@ -37,6 +37,7 @@ const SLOTS = [
 const JOIN_KEYS = SLOTS.map(s => s.key);
 const CAT_ALIAS = { '顔モデル': '顔', '体型モデル': '体', '背景': '背景セット' };
 const ACC_KEYS = ['acc0', 'acc1', 'acc2'];
+const PROP_KEYS = ['prop0', 'prop1', 'prop2'];
 const normCat = c => CAT_ALIAS[c] || c;
 const catDisp = c => c === '背景セット' ? '背景' : c;
 const Q_CAT = '品質向上';
@@ -293,7 +294,7 @@ function allParts() {
       }
     }
   }
-  for (const it of (U.partsExtra || [])) if (!del.has(it.id)) list.push(Object.assign({ _ix: 1e6 + ix++ }, it));
+  for (const it of (U.partsExtra || [])) list.push(Object.assign({ _ix: 1e6 + ix++ }, it));
   if (U.partOrder) {
     const ixOf = (cat, sub) => {
       const ids = U.partOrder[cat + '\t' + sub];
@@ -313,7 +314,7 @@ function allPoses() {
   const out = [];
   let ix = 0;
   for (const p of (catalog().poses || [])) { ix++; if (!del.has(p.id)) out.push(Object.assign({ _ix: ix }, p, (U.poseEdit || {})[p.id] || {})); }
-  for (const p of (U.posesExtra || [])) if (!del.has(p.id)) out.push(Object.assign({ _ix: 1e6 + ix++ }, p));
+  for (const p of (U.posesExtra || [])) out.push(Object.assign({ _ix: 1e6 + ix++ }, p));
   for (const p of out) p.cat = poseCat(p.cat);
   return out;
 }
@@ -524,7 +525,7 @@ function modal(html, cls) {
   m.onclick = ev => { if (ev.target === m) closeModal(); };
   return m;
 }
-function closeModal() { const m = $('modal'); if (m._tidyFs) { m._tidyFs(); m._tidyFs = null; } m.className = ''; m.innerHTML = ''; }
+function closeModal() { hidePick(); const m = $('modal'); if (m._tidyFs) { m._tidyFs(); m._tidyFs = null; } m.className = ''; m.innerHTML = ''; }
 window.closeModal = closeModal;
 function ask(msg, yes, no) {
   return new Promise(res => {
@@ -1055,10 +1056,245 @@ window.onLook = v => {
   render();
   const el = $('lookq'); if (el) { el.focus(); try { el.setSelectionRange(caret, caret); } catch (e) {} }
 };
-function itemOf(kind, id) {
-  if (kind === 'pose') { const p = poseById(id); return p && { label: p.title, text: p.body, zoom: p.zoom }; }
-  const p = partById(id); return p && { label: p.label, text: p.text };
+/* ---------- 分類コンボ（手入力＋▼。datalistは使わない） ---------- */
+function lookCatName(c) { return c.name; }
+function lookCatOf(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return null;
+  const alias = { 'ポーズ': 'pose', 'ポーズ、カメラ': 'pose', 'ポーズ・カメラ': 'pose', 'ポーズとカメラ': 'pose', '背景セット': 'bg', '照明': 'light', '道具': 'prop' };
+  if (alias[s]) return LOOK_CATS.find(c => c.key === alias[s]) || null;
+  const byName = LOOK_CATS.find(c => c.name === s || lookCatName(c) === s);
+  if (byName) return byName;
+  const n = normCat(s);
+  return LOOK_CATS.find(c => !c.pose && c.cats && c.cats.includes(n)) || null;
 }
+function lookCatOfPart(p) { return p ? LOOK_CATS.find(c => !c.pose && c.cats && c.cats.includes(p.cat)) || null : null; }
+function partCatFor(c, sub) {
+  if (!c || c.pose) return null;
+  const hit = sub && allParts().find(x => c.cats.includes(x.cat) && x.sub === sub);
+  return hit ? hit.cat : c.cats[0];
+}
+function subsForLook(c) {
+  if (!c) return [];
+  if (c.pose) return [...new Set(allPoses().map(p => p.cat).filter(Boolean))];
+  if (c.key === 'cloth') return CLOTH_SUBS.slice();
+  return [...new Set(allParts().filter(p => c.cats.includes(p.cat)).map(p => p.sub).filter(Boolean))];
+}
+function comboHTML(id, placeholder, value) {
+  return `<div class="combo"><div class="fld"><input id="${id}" type="text" placeholder="${esc(placeholder)}" value="${esc(value || '')}" autocomplete="off" spellcheck="false" onfocus="onPickFocus('${id}')" oninput="onPickType('${id}')" onchange="onPickChange('${id}')"></div><button type="button" class="chev" onmousedown="event.preventDefault()" onclick="togPick('${id}')">▼</button></div>`;
+}
+
+let pickFor = '';
+const pickLists = {};
+function hidePick() {
+  const box = $('pick');
+  if (box) { box.hidden = true; box.innerHTML = ''; }
+  pickFor = '';
+  document.querySelectorAll('.combo .chev.on').forEach(b => b.classList.remove('on'));
+}
+function placePick(anchor) {
+  const box = $('pick');
+  const r = anchor.getBoundingClientRect();
+  const width = Math.min(Math.max(r.width + 50, 220), window.innerWidth - 16);
+  let top = r.bottom + 4;
+  box.style.left = Math.max(8, Math.min(r.left, window.innerWidth - width - 8)) + 'px';
+  box.style.width = width + 'px';
+  box.hidden = false;
+  box.style.top = '0px';
+  const h = Math.min(box.scrollHeight, window.innerHeight * 0.46);
+  if (top + h > window.innerHeight - 8) {
+    const above = r.top - 4 - h;
+    top = above > 8 ? above : Math.max(8, window.innerHeight - h - 8);
+  }
+  box.style.top = top + 'px';
+  box.style.maxHeight = '46dvh';
+}
+function showPickList(id, all) {
+  const box = $('pick');
+  const inp = $(id);
+  if (!box || !inp) return;
+  const list = (pickLists[id] && pickLists[id]()) || [];
+  const q = String(inp.value || '').trim();
+  const items = (!all && q) ? list.filter(x => x.includes(q)) : list;
+  if (!items.length) { hidePick(); return; }
+  pickFor = id;
+  hideSug();
+  box.innerHTML = items.map(x => `<button type="button" class="opt${x === inp.value ? ' cur' : ''}" data-v="${esc(x)}">${esc(x)}</button>`).join('');
+  const combo = inp.closest('.combo');
+  document.querySelectorAll('.combo .chev.on').forEach(b => b.classList.remove('on'));
+  const btn = combo && combo.querySelector('.chev');
+  if (btn) btn.classList.add('on');
+  placePick(combo || inp);
+}
+window.togPick = id => {
+  if (pickFor === id && $('pick') && !$('pick').hidden) { hidePick(); return; }
+  showPickList(id, true);
+};
+window.onPickFocus = id => { showPickList(id, false); };
+window.onPickType = id => {
+  if (id === 'na_cat' || id === 'edCat') markCatInput(id);
+  showPickList(id, false);
+};
+window.onPickChange = id => {
+  if (id === 'na_cat' || id === 'edCat') applyCatInput(id);
+  if (id === 'na_sub') {
+    const c = addCatOf();
+    LS.set('pr_addsub_' + c.key, (($(id) && $(id).value) || '').trim());
+  }
+};
+function markCatInput(id) {
+  const el = $(id);
+  if (!el) return null;
+  const c = lookCatOf(el.value);
+  el.classList.toggle('bad', !c);
+  return c;
+}
+function applyCatInput(id) {
+  const el = $(id);
+  if (!el) return null;
+  const c = lookCatOf(el.value);
+  if (!c) { el.classList.add('bad'); return null; }
+  el.value = lookCatName(c);
+  el.classList.remove('bad');
+  if (id === 'na_cat') switchAddCat(c);
+  if (id === 'edCat') syncEditKind();
+  return c;
+}
+function switchAddCat(c) {
+  if (!c || c.key === addCatOf().key) return;
+  const keep = {
+    lab: ($('na_lab') && $('na_lab').value) || '',
+    tx: ($('na_tx') && $('na_tx').value) || '',
+    zm: ($('na_zm') && $('na_zm').value) || '',
+    ppl: ($('na_ppl') && $('na_ppl').value) || ''
+  };
+  LS.set('pr_addcat', c.key);
+  if (keep.ppl) LS.set('pr_addppl', keep.ppl);
+  render();
+  if ($('na_lab')) $('na_lab').value = keep.lab;
+  if ($('na_tx')) $('na_tx').value = keep.tx;
+  if ($('na_zm')) $('na_zm').value = keep.zm;
+  if (keep.ppl && $('na_ppl')) $('na_ppl').value = keep.ppl;
+}
+function syncEditKind() {
+  const c = markCatInput('edCat');
+  const pose = !!(c && c.pose);
+  if ($('edPplRow')) $('edPplRow').hidden = !pose;
+  if ($('edZm')) $('edZm').hidden = !pose;
+  pickLists.edSub = () => subsForLook(c);
+  const box = $('pick');
+  if (pickFor === 'edSub' && box && !box.hidden) showPickList('edSub', true);
+}
+function bindPick() {
+  const box = $('pick');
+  if (!box || box._bound) return;
+  box._bound = true;
+  box.addEventListener('click', ev => {
+    const opt = ev.target.closest && ev.target.closest('.opt');
+    if (!opt || !pickFor) return;
+    const id = pickFor;
+    const inp = $(id);
+    if (inp) {
+      inp.value = opt.dataset.v || '';
+      inp.classList.remove('bad');
+      if (id === 'na_cat' || id === 'edCat') applyCatInput(id);
+      if (id === 'na_sub') {
+        const c = addCatOf();
+        LS.set('pr_addsub_' + c.key, inp.value.trim());
+      }
+    }
+    hidePick();
+  });
+}
+function isPartExtra(id) { return (U.partsExtra || []).some(x => x.id === id); }
+function isPoseExtra(id) { return (U.posesExtra || []).some(x => x.id === id); }
+function dropPart(id) {
+  U.partsExtra = (U.partsExtra || []).filter(x => x.id !== id);
+  U.partsDelete = [...new Set([...(U.partsDelete || []), id])];
+  if (U.partsEdit) delete U.partsEdit[id];
+}
+function dropPose(id) {
+  U.posesExtra = (U.posesExtra || []).filter(x => x.id !== id);
+  U.poseDelete = [...new Set([...(U.poseDelete || []), id])];
+  if (U.poseEdit) delete U.poseEdit[id];
+}
+function posePatchOf(p, patch) {
+  const it = { id: p.id, title: p.title, body: p.body, zoom: p.zoom || '', people: p.people, cat: p.cat, catGroup: p.catGroup, line: p.line, orient: p.orient, rec: p.rec, at: p.at || now() };
+  Object.assign(it, patch);
+  for (const k of Object.keys(it)) if (it[k] == null) delete it[k];
+  return it;
+}
+function partPatchOf(p, patch) {
+  const it = { id: p.id, cat: p.cat, sub: p.sub, label: p.label, text: p.text, tags: p.tags || [], typ: p.typ, ud: p.ud, at: p.at || now() };
+  Object.assign(it, patch);
+  for (const k of Object.keys(it)) if (it[k] == null) delete it[k];
+  return it;
+}
+function saveAsPose(id, fromKind, sub, label, text, zoom, people) {
+  const src = fromKind === 'pose' ? poseById(id) : partById(id);
+  const patch = { title: label, body: text, zoom: zoom || '', people: people || (src && src.people) || '1人' };
+  const sub2 = sub || (fromKind === 'pose' && src && src.cat) || '';
+  if (sub2) {
+    patch.cat = poseCat(sub2);
+    const g = allPoses().find(x => x.cat === patch.cat && x.catGroup);
+    if (g) patch.catGroup = g.catGroup;
+  } else if (fromKind !== 'pose') patch.cat = '';
+  if (fromKind !== 'pose') {
+    dropPart(id);
+    U.posesExtra = U.posesExtra || [];
+    U.posesExtra.push(posePatchOf(src || { id, at: now() }, patch));
+    return;
+  }
+  if (isPoseExtra(id)) Object.assign(U.posesExtra.find(x => x.id === id), patch);
+  else if (src && ((src.cat || '') !== (patch.cat || ''))) {
+    dropPose(id);
+    U.posesExtra = U.posesExtra || [];
+    U.posesExtra.push(posePatchOf(src, patch));
+  } else {
+    U.poseEdit = U.poseEdit || {};
+    U.poseEdit[id] = Object.assign({}, U.poseEdit[id] || {}, patch);
+  }
+}
+function saveAsPart(id, fromKind, look, sub, label, text) {
+  const src = fromKind === 'part' ? partById(id) : poseById(id);
+  const cat = partCatFor(look, sub);
+  const sub2 = sub || (fromKind === 'part' && src && look.cats.includes(src.cat) && src.sub) || cat;
+  const patch = { cat, sub: sub2, label, text };
+  if (fromKind !== 'part') {
+    dropPose(id);
+    U.partsExtra = U.partsExtra || [];
+    U.partsExtra.push(partPatchOf(src || { id, tags: [], at: now() }, patch));
+    return;
+  }
+  if (isPartExtra(id)) Object.assign(U.partsExtra.find(x => x.id === id), patch);
+  else if (src && (src.cat !== cat || (src.sub || src.cat) !== sub2)) {
+    dropPart(id);
+    U.partsExtra = U.partsExtra || [];
+    U.partsExtra.push(partPatchOf(src, patch));
+  } else {
+    U.partsEdit = U.partsEdit || {};
+    U.partsEdit[id] = Object.assign({}, U.partsEdit[id] || {}, { label, text });
+  }
+}
+function slotHolds(slot, kind, rec) {
+  if (kind === 'pose') return slot.kind === 'pose';
+  if (slot.kind === 'pose') return false;
+  if (slot.kind === 'clothes') return rec.cat === '服装';
+  if (slot.kind === 'acc') return rec.cat === 'アクセサリー';
+  return (slot.groups || []).some(g => g[0] === rec.cat);
+}
+
+function itemOf(kind, id) {
+  if (kind === 'pose') {
+    const p = poseById(id);
+    return p && { kind: 'pose', label: p.title, text: p.body, zoom: p.zoom, people: p.people, sub: p.cat || '', catName: lookCatName(LOOK_CATS[0]) };
+  }
+  const p = partById(id);
+  if (!p) return null;
+  const c = lookCatOfPart(p);
+  return { kind: 'part', label: p.label, text: p.text, sub: p.sub || p.cat || '', catName: c ? lookCatName(c) : catDisp(p.cat) };
+}
+
 function galLive() { const del = new Set(U.galleryDel || []); return (U.gallery || []).filter(g => !del.has(g.id)); }
 function galImgFor(kind, id) {
   let best = null, bs = '';
@@ -1075,12 +1311,18 @@ window.editItem = (kind, id) => {
   const it = itemOf(kind, id);
   if (!it) return;
   const gi = galImgFor(kind, id);
+  const ppl = it.people || '1人';
   modal(`<div class="mt">編集</div>
     ${gi ? `<div class="edImg"><img id="edImg" alt=""></div>` : ''}
+    ${comboHTML('edCat', '分類', it.catName)}
+    ${comboHTML('edSub', '小分類', it.sub)}
+    <div class="ppl addRow" id="edPplRow"${kind === 'pose' ? '' : ' hidden'}><span class="pl">人数</span><select id="edPpl">${ADD_PPL.map(x => `<option${x === ppl ? ' selected' : ''}>${x}</option>`).join('')}</select></div>
     <input type="text" id="edLab" value="${esc(it.label)}" placeholder="タイトル">
     <textarea id="edTx" placeholder="本文">${esc(it.text || '')}</textarea>
-    ${kind === 'pose' ? `<textarea id="edZm" class="short" placeholder="ズーム">${esc(it.zoom || '')}</textarea>` : ''}
+    <textarea id="edZm" class="short" placeholder="ズーム"${kind === 'pose' ? '' : ' hidden'}>${esc(it.zoom || '')}</textarea>
     <div class="row two"><button class="sub" onclick="closeModal()">キャンセル</button><button class="b" id="edSave">保存</button></div>`);
+  pickLists.edCat = () => LOOK_CATS.map(lookCatName);
+  pickLists.edSub = () => subsForLook(lookCatOf(it.catName));
   if (gi) {
     const im = $('edImg'), th = imgCache.get(gi.thumb) || imgCache.get(gi.img);
     if (th) { im.src = th; im.parentNode.classList.add('ld'); }
@@ -1089,22 +1331,26 @@ window.editItem = (kind, id) => {
   $('edSave').onclick = () => {
     const label = $('edLab').value.trim();
     const text = $('edTx').value;
+    const sub = (($('edSub') && $('edSub').value) || '').trim();
+    const dest = applyCatInput('edCat');
     if (!label) { $('edLab').focus(); return; }
-    if (kind === 'pose') {
-      const zoom = $('edZm').value;
-      const ex = (U.posesExtra || []).find(x => x.id === id);
-      if (ex) Object.assign(ex, { title: label, body: text, zoom });
-      else U.poseEdit[id] = Object.assign({}, U.poseEdit[id] || {}, { title: label, body: text, zoom });
-    } else {
-      const ex = (U.partsExtra || []).find(x => x.id === id);
-      if (ex) Object.assign(ex, { label, text });
-      else U.partsEdit[id] = Object.assign({}, U.partsEdit[id] || {}, { label, text });
-    }
-    for (const s of SLOTS) {
-      const v = st.sel[s.key];
-      if (v && v.id === id) { v.label = label; v.text = text; if (kind === 'pose') v.zoom = $('edZm').value; }
+    if (!dest) { if ($('edCat')) $('edCat').focus(); return; }
+    const toPose = !!dest.pose;
+    const zoom = ($('edZm') && $('edZm').value) || '';
+    const people = ($('edPpl') && $('edPpl').value) || '1人';
+    if (toPose) saveAsPose(id, kind, sub, label, text, zoom, people);
+    else saveAsPart(id, kind, dest, sub, label, text);
+    const rec = toPose ? poseById(id) : partById(id);
+    for (const sl of SLOTS) {
+      const v = st.sel[sl.key];
+      if (!v || v.id !== id) continue;
+      if (!rec || !slotHolds(sl, toPose ? 'pose' : 'part', rec)) st.sel[sl.key] = null;
+      else if (toPose) Object.assign(v, { label, text, zoom, people: rec.people });
+      else Object.assign(v, { label, text, typ: rec.typ, cat: rec.cat, sub: rec.sub });
     }
     closeModal();
+    look.cat = dest.key;
+    LS.set('pr_lookcat', look.cat);
     saveUser(false).then(ok => { if (ok) status('保存したよ', true); });
     render();
   };
@@ -1336,14 +1582,30 @@ function editGal(id) {
   tab = 'make'; LS.set('pr_tab', tab);
   render(); window.scrollTo(0, 0);
 }
+function galRowKeys(gc) {
+  const base = (GAL_CATS.find(c => c[0] === gc) || [])[1];
+  if (!base) return null;
+  if (gc === '服装') return base.concat(ACC_KEYS);
+  if (gc === '背景') return base.concat(PROP_KEYS);
+  return base;
+}
+/* 背景の古い画像（家具が入ってない）を反映するときは、今の家具の行はそのまま */
+function applyKeysFor(g) {
+  const gc = gcOf(g);
+  const keys = galRowKeys(gc);
+  if (gc === '背景' && keys) {
+    const sel = (g.snap && g.snap.sel) || {};
+    if (!PROP_KEYS.some(k => sel[k])) return keys.filter(k => k === 'bg');
+  }
+  return keys;
+}
 function applyGal(id) {
   const g = galById(id);
   if (!g) return;
   if (gEdit) { gEdit = null; resetAttach(); }
   const gc = gcOf(g);
   if (!String(g.text || '').trim() && !g.snap) return;
-  const base = (GAL_CATS.find(c => c[0] === gc) || [])[1];
-  const keys = base && gc === '服装' ? base.concat(ACC_KEYS) : base;
+  const keys = applyKeysFor(g);
   if (!keys) {
     restoreSnap(g.snap);
     if (g.text && assemble() !== g.text) st.outputEdit = g.text;
@@ -1377,27 +1639,27 @@ function addSubs(c) {
 function renderAdd() {
   if (!D) return tokenCard();
   const c = addCatOf();
-  const subs = addSubs(c);
   const sub0 = LS.get('pr_addsub_' + c.key, '');
   const ppl = LS.get('pr_addppl', '1人');
-  const subF = c.key === 'cloth'
-    ? `<select id="na_sub">${CLOTH_SUBS.map(x => `<option${x === sub0 ? ' selected' : ''}>${x}</option>`).join('')}</select>`
-    : `<input id="na_sub" type="text" list="na_subs" placeholder="${c.pose ? 'ポーズの分類' : '小分類'}" autocomplete="off" value="${esc(sub0)}"><datalist id="na_subs">${subs.map(x => `<option value="${esc(x)}">`).join('')}</datalist>`;
+  pickLists.na_cat = () => LOOK_CATS.map(lookCatName);
+  pickLists.na_sub = () => subsForLook(c);
   return `<div class="card addf">
     <div class="bt">${ICON.add}<span>手入力で追加</span></div>
-    <div class="ppl addRow"><span class="pl">分類</span><select id="na_cat" onchange="setAddCat(this.value)">${LOOK_CATS.map(x => `<option value="${x.key}"${x.key === c.key ? ' selected' : ''}>${esc(x.pose ? 'ポーズ、カメラ' : x.name)}</option>`).join('')}</select></div>
+    <div class="ppl addRow"><span class="pl">分類</span>${comboHTML('na_cat', '分類', lookCatName(c))}</div>
     ${c.pose ? `<div class="ppl addRow"><span class="pl">人数</span><select id="na_ppl" onchange="setAddPpl(this.value)">${ADD_PPL.map(x => `<option${x === ppl ? ' selected' : ''}>${x}</option>`).join('')}</select></div>` : ''}
-    ${subF}
+    ${comboHTML('na_sub', c.pose ? 'ポーズの分類' : '小分類', sub0)}
     <input id="na_lab" type="text" placeholder="タイトル" autocomplete="off">
     <textarea id="na_tx" placeholder="本文"></textarea>
     ${c.pose ? `<textarea id="na_zm" class="short" placeholder="ズーム"></textarea>` : ''}
     <button class="b wide" onclick="addPart()">${ICON.add}追加する</button>
   </div>`;
 }
-window.setAddCat = v => { LS.set('pr_addcat', v); render(); };
+window.setAddCat = v => { const c = LOOK_CATS.find(x => x.key === v); if (c) switchAddCat(c); };
 window.setAddPpl = v => LS.set('pr_addppl', v);
 window.addPart = () => {
-  const c = addCatOf();
+  const dest = applyCatInput('na_cat');
+  if (!dest) { if ($('na_cat')) $('na_cat').focus(); return; }
+  const c = dest;
   const label = ($('na_lab').value || '').trim();
   const text = $('na_tx').value || '';
   const sub = (($('na_sub') && $('na_sub').value) || '').trim();
@@ -1414,12 +1676,11 @@ window.addPart = () => {
     U.posesExtra.push(it);
     LS.set('pr_addppl', people);
   } else {
-    /* 家具のように分類が複数ある時は、同じ小分類を持つ既存の分類に入れる（無ければ先頭の分類） */
-    const hit = sub && allParts().find(p => c.cats.includes(p.cat) && p.sub === sub);
-    const cat = hit ? hit.cat : c.cats[0];
+    const cat = partCatFor(c, sub);
     U.partsExtra = U.partsExtra || [];
     U.partsExtra.push({ id: uid(), cat, sub: sub || cat, label, text, tags: [], at: now() });
   }
+  LS.set('pr_addcat', c.key);
   LS.set('pr_addsub_' + c.key, sub);
   render();
   status('追加したよ', true);
@@ -1734,6 +1995,7 @@ function renderDock() {
 }
 
 function render(opt) {
+  hidePick();
   opt = opt || {};
   const keep = opt.keepFocus;
   const wasActive = keep && document.activeElement && document.activeElement.id === keep;
@@ -1758,6 +2020,10 @@ function render(opt) {
 }
 
 document.addEventListener('click', ev => {
+  const pick = $('pick');
+  if (pick && !pick.hidden) {
+    if (!pick.contains(ev.target) && !(ev.target.closest && ev.target.closest('.combo'))) hidePick();
+  }
   const sug = $('sug');
   if (!sug || sug.hidden) return;
   if (sug.contains(ev.target)) return;
@@ -1779,6 +2045,7 @@ window.addEventListener('scroll', () => {
 }, { passive: true });
 
 function bindOnce() {
+  bindPick();
   const sug = $('sug');
   sug.addEventListener('click', ev => {
     const sb = ev.target.closest && ev.target.closest('.sc');

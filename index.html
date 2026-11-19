@@ -51,6 +51,12 @@ main[data-tab]:not([data-tab=make]){padding-bottom:calc(30px + env(safe-area-ins
 .clr svg{width:16px;height:16px}
 .chev{flex:0 0 44px;width:44px;min-height:44px;border:1px solid var(--line2);border-radius:11px;background:var(--card2);color:var(--gold);font-size:16px;padding:0}
 .chev.on{background:var(--gold);color:#1a1008;border-color:var(--gold)}
+.combo{display:flex;align-items:center;gap:5px;margin-top:10px;width:100%}
+.combo .fld{flex:1;min-width:0}
+.combo input,.addf .combo input,.mbox .combo input{margin-top:0}
+.ppl .combo,.addRow .combo{margin-top:0;flex:1}
+.combo input.bad,.combo input.bad:focus{border-color:var(--red);box-shadow:none}
+#pick{z-index:70}
 .body{white-space:pre-wrap;max-height:200px;overflow:auto;background:#0d0a0c;margin:0 8px 10px;border-radius:11px;border:1px solid #2a221c;padding:10px 12px}
 .zrow{padding:10px;border-top:1px solid #261e19;background:#17120f}
 .zbtn{width:100%;display:flex;align-items:center;justify-content:center;gap:8px;min-height:48px;border-radius:12px;border:1px solid var(--gold);background:rgba(217,169,92,.1);color:var(--gold2);font-weight:800;font-size:16px}
@@ -192,6 +198,7 @@ textarea.tsvtx{margin-top:10px;min-height:140px;font-family:ui-monospace,Menlo,m
 <div id="sheet"></div>
 <div id="modal"></div>
 <div id="sug" class="sug" hidden></div>
-<script src="app.js?v=300"></script>
+<div id="pick" class="sug" hidden></div>
+<script src="app.js?v=301"></script>
 </body>
 </html>
