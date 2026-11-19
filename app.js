@@ -1,4 +1,4 @@
-/* プロンプト作成 r296 */
+/* プロンプト作成 r298 */
 (() => {
 const API = 'https://api.github.com/repos/pokoden/slot-data/contents/';
 const PARTS_PATH = 'prompt/parts.json';
@@ -76,7 +76,7 @@ const ICON = {
   x: '<svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg>',
   ar: '<svg viewBox="0 0 24 24"><path d="M9 5.5l6.5 6.5L9 18.5"/></svg>'
 };
-const TABS = [['make', '作成'], ['look', '確認'], ['gal', 'ギャラリー'], ['io', '取込']];
+const TABS = [['make', '作成'], ['look', '確認'], ['gal', 'ギャラリー'], ['add', '追加'], ['io', '取込']];
 
 const LS = {
   get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
@@ -1318,6 +1318,67 @@ function applyGal(id) {
   status('反映したよ', true);
 }
 
+/* ---------- 追加（手入力で部品・ポーズを足す。分類は確認タブ LOOK_CATS と同じ並び） ---------- */
+const CLOTH_SUBS = ['下着', '上', '下', 'ワンピ', '水着', '後付け', '隠し', '特殊'];
+const ADD_PPL = ['1人', '2人', '3人'];
+const addCatOf = () => LOOK_CATS.find(c => c.key === LS.get('pr_addcat', 'pose')) || LOOK_CATS[0];
+function addSubs(c) {
+  if (c.pose) return [...new Set(allPoses().map(p => p.cat).filter(Boolean))];
+  if (c.key === 'cloth') return CLOTH_SUBS;
+  return [...new Set(allParts().filter(p => c.cats.includes(p.cat)).map(p => p.sub).filter(Boolean))];
+}
+function renderAdd() {
+  if (!D) return tokenCard();
+  const c = addCatOf();
+  const subs = addSubs(c);
+  const sub0 = LS.get('pr_addsub_' + c.key, '');
+  const ppl = LS.get('pr_addppl', '1人');
+  const subF = c.key === 'cloth'
+    ? `<select id="na_sub">${CLOTH_SUBS.map(x => `<option${x === sub0 ? ' selected' : ''}>${x}</option>`).join('')}</select>`
+    : `<input id="na_sub" type="text" list="na_subs" placeholder="${c.pose ? 'ポーズの分類' : '小分類'}" autocomplete="off" value="${esc(sub0)}"><datalist id="na_subs">${subs.map(x => `<option value="${esc(x)}">`).join('')}</datalist>`;
+  return `<div class="card addf">
+    <div class="bt">${ICON.add}<span>手入力で追加</span></div>
+    <div class="ppl addRow"><span class="pl">分類</span><select id="na_cat" onchange="setAddCat(this.value)">${LOOK_CATS.map(x => `<option value="${x.key}"${x.key === c.key ? ' selected' : ''}>${esc(x.pose ? 'ポーズ、カメラ' : x.name)}</option>`).join('')}</select></div>
+    ${c.pose ? `<div class="ppl addRow"><span class="pl">人数</span><select id="na_ppl" onchange="setAddPpl(this.value)">${ADD_PPL.map(x => `<option${x === ppl ? ' selected' : ''}>${x}</option>`).join('')}</select></div>` : ''}
+    ${subF}
+    <input id="na_lab" type="text" placeholder="タイトル" autocomplete="off">
+    <textarea id="na_tx" placeholder="本文"></textarea>
+    ${c.pose ? `<textarea id="na_zm" class="short" placeholder="ズーム"></textarea>` : ''}
+    <button class="b wide" onclick="addPart()">${ICON.add}追加する</button>
+  </div>`;
+}
+window.setAddCat = v => { LS.set('pr_addcat', v); render(); };
+window.setAddPpl = v => LS.set('pr_addppl', v);
+window.addPart = () => {
+  const c = addCatOf();
+  const label = ($('na_lab').value || '').trim();
+  const text = $('na_tx').value || '';
+  const sub = (($('na_sub') && $('na_sub').value) || '').trim();
+  if (!label) { status('タイトルを入れてね', false); $('na_lab').focus(); return; }
+  if (c.pose) {
+    const people = ($('na_ppl') && $('na_ppl').value) || '1人';
+    U.posesExtra = U.posesExtra || [];
+    const it = { id: uid(), title: label, body: text, zoom: ($('na_zm') && $('na_zm').value) || '', people, at: now() };
+    if (sub) {
+      it.cat = poseCat(sub);
+      const g = allPoses().find(p => p.cat === it.cat && p.catGroup);
+      if (g) it.catGroup = g.catGroup;
+    }
+    U.posesExtra.push(it);
+    LS.set('pr_addppl', people);
+  } else {
+    /* 家具のように分類が複数ある時は、同じ小分類を持つ既存の分類に入れる（無ければ先頭の分類） */
+    const hit = sub && allParts().find(p => c.cats.includes(p.cat) && p.sub === sub);
+    const cat = hit ? hit.cat : c.cats[0];
+    U.partsExtra = U.partsExtra || [];
+    U.partsExtra.push({ id: uid(), cat, sub: sub || cat, label, text, tags: [], at: now() });
+  }
+  LS.set('pr_addsub_' + c.key, sub);
+  render();
+  status('追加したよ', true);
+  saveUser(false).then(ok => { if (ok) status('追加して保存したよ', true); });
+};
+
 function renderIo() {
   return `${!D ? tokenCard() : ''}
   <div class="card">
@@ -1636,6 +1697,7 @@ function render(opt) {
   if (tab === 'make') app.innerHTML = renderMake();
   else if (tab === 'look') app.innerHTML = renderLook();
   else if (tab === 'gal') app.innerHTML = renderGal();
+  else if (tab === 'add') app.innerHTML = renderAdd();
   else app.innerHTML = renderIo();
   renderDock();
   hydrateImgs();
