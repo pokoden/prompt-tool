@@ -1,4 +1,4 @@
-/* プロンプト作成 r295 */
+/* プロンプト作成 r296 */
 (() => {
 const API = 'https://api.github.com/repos/pokoden/slot-data/contents/';
 const PARTS_PATH = 'prompt/parts.json';
@@ -11,7 +11,8 @@ const FIXED_PRESETS = [
   { label: '大人顔', text: '平面な2Dアニメイラスト、女性の顔は切れ長の目、通った鼻筋、シャープな顎のライン、頬はふっくらしすぎない。目に涙は無い。女性は高身長で成熟した大人の体つき、上品で妖艶な大人の雰囲気、滑らかな肌質、綺麗な肌質、肌に凹凸や線は無し、影による肌の表現はしないでください。全身の肌の影を全部消す、全身の毛穴や影の線が一切ないツルンツルンな綺麗な肌、' },
   { label: '大人顔のみ', text: '女性の顔は切れ長の目、通った鼻筋、シャープな顎のライン、頬はふっくらしすぎない。目に涙は無い。女性は高身長で成熟した大人の体つき、上品で妖艶な大人の雰囲気、滑らかな肌質、綺麗な肌質、肌に凹凸や線は無し、影による肌の表現はしないでください。全身の肌の影を全部消す、全身の毛穴や影の線が一切ないツルンツルンな綺麗な肌、' }
 ];
-const PROP_GROUPS = [['家具'], ['小道具'], ['水回り設備'], ['拘束器具'], ['乗り物'], ['建物の一部']];
+/* 家具の行で選べる分類（旧「壁」のカーテン・掲示板、旧「道具」の水回り設備・拘束器具・乗り物・建物の一部もここ） */
+const FURN_GROUPS = [['家具'], ['カーテン'], ['掲示板'], ['水回り設備'], ['拘束器具'], ['乗り物'], ['建物の一部']];
 const SLOTS = [
   { key: 'pose', title: 'ポーズ、カメラ', kind: 'pose' },
   { key: 'face', title: '顔', kind: 'part', groups: [['顔']] },
@@ -23,23 +24,28 @@ const SLOTS = [
   { key: 'cl2', title: '服装', kind: 'clothes', slot: 2 },
   { key: 'acc0', title: 'アクセサリー', kind: 'acc' },
   { key: 'acc1', title: 'アクセサリー', kind: 'acc' },
-  { key: 'bg', title: '背景セット', kind: 'part', groups: [['背景セット']] },
-  { key: 'wall', title: '壁', kind: 'part', groups: [['壁'], ['カーテン'], ['掲示板']] },
-  { key: 'floor', title: '床', kind: 'part', groups: [['床']] },
-  { key: 'prop0', title: '道具', kind: 'part', groups: PROP_GROUPS },
-  { key: 'prop1', title: '道具', kind: 'part', groups: PROP_GROUPS },
+  { key: 'acc2', title: 'アクセサリー', kind: 'acc' },
+  { key: 'bg', title: '背景', kind: 'part', groups: [['背景セット']] },
+  { key: 'prop0', title: '家具', kind: 'part', groups: FURN_GROUPS },
+  { key: 'prop1', title: '家具', kind: 'part', groups: FURN_GROUPS },
+  { key: 'prop2', title: '家具', kind: 'part', groups: FURN_GROUPS },
   { key: 'light', title: '光と影', kind: 'part', groups: [['照明']] },
   { key: 'size', title: '画像サイズ', kind: 'part', groups: [['画像サイズ']] },
   { key: 'lock', title: '品質向上', kind: 'part', groups: [['品質向上']] }
 ];
 /* 完成文の並び。あとで変えるときはここだけ直す（作成の行順と揃える） */
 const JOIN_KEYS = SLOTS.map(s => s.key);
-const CAT_ALIAS = { '顔モデル': '顔', '体型モデル': '体' };
+const CAT_ALIAS = { '顔モデル': '顔', '体型モデル': '体', '背景': '背景セット' };
+const ACC_KEYS = ['acc0', 'acc1', 'acc2'];
 const normCat = c => CAT_ALIAS[c] || c;
+const catDisp = c => c === '背景セット' ? '背景' : c;
 const Q_CAT = '品質向上';
 const QID = l => Q_CAT + '_' + l;
-const GAL_CATS = [['ポーズ', ['pose']], ['顔', ['face']], ['体', ['body']], ['髪型', ['hair']], ['表情', ['expr']], ['服装', ['cl0', 'cl1', 'cl2']], ['アクセサリー', ['acc0', 'acc1']], ['背景セット', ['bg']], ['壁', ['wall']], ['床', ['floor']], ['道具', ['prop0', 'prop1']], ['完成品', null]];
-const gcOf = g => (g && GAL_CATS.some(c => c[0] === g.gc)) ? g.gc : 'ポーズ';
+const GAL_CATS = [['ポーズ', ['pose']], ['顔', ['face']], ['体', ['body']], ['髪型', ['hair']], ['表情', ['expr']], ['服装', ['cl0', 'cl1', 'cl2']], ['アクセサリー', ACC_KEYS], ['背景', ['bg']], ['家具', ['prop0', 'prop1', 'prop2']], ['完成品', null]];
+/* 旧ギャラリー分類名の読み替え（壁・床は無くなったのでポーズ扱い） */
+const GC_ALIAS = { '背景セット': '背景', '道具': '家具' };
+const gcName = n => GC_ALIAS[n] || n;
+const gcOf = g => (g && GAL_CATS.some(c => c[0] === gcName(g.gc))) ? gcName(g.gc) : 'ポーズ';
 const LOOK_CATS = [
   { key: 'pose', name: 'ポーズ・カメラ', pose: true },
   { key: 'face', name: '顔', cats: ['顔'] },
@@ -48,10 +54,8 @@ const LOOK_CATS = [
   { key: 'expr', name: '表情', cats: ['表情'] },
   { key: 'cloth', name: '服装', cats: ['服装'] },
   { key: 'acc', name: 'アクセサリー', cats: ['アクセサリー'] },
-  { key: 'bg', name: '背景セット', cats: ['背景セット'] },
-  { key: 'wall', name: '壁', cats: ['壁', 'カーテン', '掲示板'] },
-  { key: 'floor', name: '床', cats: ['床'] },
-  { key: 'prop', name: '道具', cats: PROP_GROUPS.map(g => g[0]) },
+  { key: 'bg', name: '背景', cats: ['背景セット'] },
+  { key: 'prop', name: '家具', cats: FURN_GROUPS.map(g => g[0]) },
   { key: 'light', name: '光と影', cats: ['照明'] },
   { key: 'size', name: '画像サイズ', cats: ['画像サイズ'] },
   { key: 'quality', name: '品質向上', cats: ['品質向上'] }
@@ -93,12 +97,12 @@ let D = null, U = emptyUser(), sha = { parts: null, user: null };
 let saveT = 0;
 let look = { cat: LS.get('pr_lookcat', ''), q: '', sort: LS.get('pr_sort_look', 'def') };
 let galSort = LS.get('pr_sort_gal', 'add');
-let galCat = LS.get('pr_galcat', 'ポーズ');
+let galCat = gcName(LS.get('pr_galcat', 'ポーズ'));
 if (!GAL_CATS.some(c => c[0] === galCat)) galCat = 'ポーズ';
 let tsvDraft = '';
 let listSort = LS.get('pr_sort_list', 'def');
 let st = { sel: {}, open: '', list: '', listQ: '', showFull: false, outputEdit: null, og: new Set() };
-let att = { blob: null, url: '', thumb: null, name: '', gc: LS.get('pr_galcat_save', 'ポーズ') };
+let att = { blob: null, url: '', thumb: null, name: '', gc: gcName(LS.get('pr_galcat_save', 'ポーズ')) };
 let gEdit = null; // { id } while overwriting a gallery entry from 作成
 let skipFocus = false;
 const imgCache = new Map();
@@ -872,7 +876,7 @@ window.clearAttach = () => {
 function resetAttach() {
   if (att.url && att.blob) URL.revokeObjectURL(att.url);
   att.blob = null; att.thumb = null; att.url = ''; att.name = '';
-  att.gc = LS.get('pr_galcat_save', 'ポーズ');
+  att.gc = gcName(LS.get('pr_galcat_save', 'ポーズ'));
 }
 function showGalEditImg(id) {
   const g = galById(id);
@@ -1256,7 +1260,7 @@ function applyGal(id) {
   if (gEdit) { gEdit = null; resetAttach(); }
   const gc = gcOf(g);
   const base = (GAL_CATS.find(c => c[0] === gc) || [])[1];
-  const keys = base && gc === '服装' ? base.concat(['acc0', 'acc1']) : base;
+  const keys = base && gc === '服装' ? base.concat(ACC_KEYS) : base;
   if (!keys) {
     restoreSnap(g.snap);
     if (g.text && assemble() !== g.text) st.outputEdit = g.text;
@@ -1488,11 +1492,11 @@ async function impTsvText(text) {
   let cats;
   if (kind === 'pose') { const ci = head.indexOf('ポーズ'); cats = ci >= 0 ? [...new Set(rows.map(c => poseCat(String(c[ci] || '').trim())).filter(Boolean))] : []; }
   else { const ci = head.indexOf('分類') >= 0 ? head.indexOf('分類') : head.indexOf('今のタブ'); cats = ci >= 0 ? [...new Set(rows.map(c => normCat(String(c[ci] || '').trim() || '服装')))] : ['服装']; }
-  const mode = await impMode(kind, rows.length, cats);
+  const mode = await impMode(kind, rows.length, kind === 'pose' ? cats : cats.map(catDisp));
   if (!mode) return false;
   if (mode === 'rep') {
     if (kind === 'pose' && !cats.length) { status('ポーズ列がないと入れ替えできないよ', false); return false; }
-    if (!(await ask(`${cats.join('・')} を入れ替えますか？`, '入れ替える', 'やめる'))) return false;
+    if (!(await ask(`${(kind === 'pose' ? cats : cats.map(catDisp)).join('・')} を入れ替えますか？`, '入れ替える', 'やめる'))) return false;
   }
   const n = kind === 'pose' ? impPoses(rows, head, mode) : impParts(rows, head, mode);
   refreshSel();
