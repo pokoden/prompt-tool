@@ -1,4 +1,4 @@
-/* プロンプト作成 r299 */
+/* プロンプト作成 r300 */
 (() => {
 const API = 'https://api.github.com/repos/pokoden/slot-data/contents/';
 const PARTS_PATH = 'prompt/parts.json';
@@ -655,14 +655,15 @@ function renderAttach() {
   </div>`;
   return `<div class="card attach">
     <div class="bt">${ICON.gal}<span>ギャラリーに保存</span></div>
-    <label class="pick${att.url ? ' has' : ''}">
+    ${attList.length > 1 ? `<div class="pgrid">${attList.map((a, i) => `<div class="pg"><img src="${a.url}" alt=""><button class="px" onclick="dropAttach(${i})" aria-label="外す">×</button></div>`).join('')}</div>
+    <label class="pick slim"><span class="pi">${ICON.cam}</span><span>画像を追加</span><input type="file" id="attFile" accept="image/*" multiple onchange="onAttach(this, true)"></label>` : `<label class="pick${att.url ? ' has' : ''}">
       ${att.url ? `<img src="${att.url}" alt="">` : `<span class="pi">${ICON.cam}</span><span>画像を添付</span>`}
-      <input type="file" id="attFile" accept="image/*" onchange="onAttach(this)">
-    </label>
-    ${att.url ? `<button class="mini wide" onclick="clearAttach()">画像を外す</button>` : ''}
+      <input type="file" id="attFile" accept="image/*" multiple onchange="onAttach(this, ${att.url ? 'true' : 'false'})">
+    </label>`}
+    ${att.url ? `<button class="mini wide" onclick="clearAttach()">${attList.length > 1 ? `${attList.length}枚を外す` : '画像を外す'}</button>` : ''}
     <input type="text" id="attName" placeholder="名前" value="${esc(att.name)}" oninput="att.name=this.value" autocomplete="off">
     <div class="chips gcs" id="attGc">${GAL_CATS.map(([n]) => `<button class="chip${att.gc === n ? ' on' : ''}" data-gc="${n}" onclick="setAttGc('${n}')">${n}</button>`).join('')}</div>
-    <button class="b wide" id="btnGalSave" ${att.blob ? '' : 'disabled'} onclick="saveGallery()">${ICON.save}保存する</button>
+    <button class="b wide" id="btnGalSave" ${att.blob ? '' : 'disabled'} onclick="saveGallery()">${ICON.save}${attList.length > 1 ? `${attList.length}枚を保存する` : '保存する'}</button>
   </div>`;
 }
 window.att = att;
@@ -855,28 +856,50 @@ function toJpeg(im, maxSide, q) {
   x.drawImage(im, 0, 0, c.width, c.height);
   return new Promise(res => c.toBlob(b => res(b), 'image/jpeg', q));
 }
-window.onAttach = async el => {
-  const f = el.files && el.files[0];
-  if (!f) return;
-  try {
-    const { im, u } = await loadImg(f);
-    const big = await toJpeg(im, 1200, 0.85);
-    const th = await toJpeg(im, 480, 0.8);
-    URL.revokeObjectURL(u);
-    if (att.url && att.blob) URL.revokeObjectURL(att.url);
-    att.blob = big; att.thumb = th; att.url = URL.createObjectURL(th);
+/* 保存は複数枚OK（attList）。att.blob/thumb/url は1枚目と同じ。編集は1枚だけ */
+let attList = [];
+function syncAtt() {
+  const a = attList[0];
+  att.blob = a ? a.blob : null; att.thumb = a ? a.thumb : null; att.url = a ? a.url : '';
+}
+function dropAttList() { for (const a of attList) URL.revokeObjectURL(a.url); attList = []; }
+window.onAttach = async (el, add) => {
+  let files = [...(el.files || [])];
+  if (!files.length) return;
+  if (gEdit) files = files.slice(0, 1);
+  const got = [], bad = [];
+  for (const f of files) {
+    try {
+      const { im, u } = await loadImg(f);
+      const big = await toJpeg(im, 1200, 0.85);
+      const th = await toJpeg(im, 480, 0.8);
+      URL.revokeObjectURL(u);
+      got.push({ blob: big, thumb: th, url: URL.createObjectURL(th) });
+    } catch (e) { bad.push(f.name || '画像'); }
+  }
+  if (got.length) {
+    if (gEdit || !add) dropAttList();
+    attList = attList.concat(got);
+    syncAtt();
     render();
-  } catch (e) { status(String(e.message || e), false); }
+  }
+  if (bad.length) status(`読めなかった画像：${bad.join('、')}`, false);
+};
+window.dropAttach = i => {
+  const a = attList[i];
+  if (!a) return;
+  URL.revokeObjectURL(a.url);
+  attList.splice(i, 1);
+  syncAtt();
+  render();
 };
 window.clearAttach = () => {
-  if (att.url && att.blob) URL.revokeObjectURL(att.url);
-  att.blob = null; att.thumb = null; att.url = '';
+  dropAttList(); syncAtt();
   if (gEdit) showGalEditImg(gEdit.id);
   render();
 };
 function resetAttach() {
-  if (att.url && att.blob) URL.revokeObjectURL(att.url);
-  att.blob = null; att.thumb = null; att.url = ''; att.name = '';
+  dropAttList(); syncAtt(); att.name = '';
   att.gc = gcName(LS.get('pr_galcat_save', 'ポーズ'));
 }
 function showGalEditImg(id) {
@@ -944,26 +967,39 @@ window.saveGallery = async () => {
   const bare = !text.trim() || (att.gc === 'サンプル' && onlyLock());
   if (bare && att.gc !== 'サンプル') { status('プロンプトが空だよ', false); return; }
   const btn = $('btnGalSave');
-  if (btn) { btn.disabled = true; btn.textContent = '保存中…'; }
-  const id = 'g_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const list = attList.slice();
+  const total = list.length;
   const name = galSaveName() || (bare ? 'サンプル' : '');
-  try {
-    const big = new Uint8Array(await att.blob.arrayBuffer());
-    const th = new Uint8Array(await att.thumb.arrayBuffer());
-    await putFile(GAL_DIR + id + '.jpg', big, 'gallery add');
-    await putFile(GAL_DIR + id + '_t.jpg', th, 'gallery add');
-    imgCache.set(GAL_DIR + id + '_t.jpg', URL.createObjectURL(att.thumb));
-    imgCache.set(GAL_DIR + id + '.jpg', URL.createObjectURL(att.blob));
-    U.gallery = U.gallery || [];
-    U.gallery.unshift({ id, at: now(), name, gc: att.gc || 'ポーズ', text: bare ? '' : text, snap: bare ? null : snapshot(), img: GAL_DIR + id + '.jpg', thumb: GAL_DIR + id + '_t.jpg', n: 0, last: '' });
-    const ok = await saveUser(false);
+  const at = now();
+  const snap = bare ? null : snapshot();
+  U.gallery = U.gallery || [];
+  let done = 0, err = null;
+  for (const a of list) {
+    if (btn) { btn.disabled = true; btn.textContent = total > 1 ? `保存中… ${done + 1}/${total}` : '保存中…'; }
+    const id = 'g_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    try {
+      const big = new Uint8Array(await a.blob.arrayBuffer());
+      const th = new Uint8Array(await a.thumb.arrayBuffer());
+      await putFile(GAL_DIR + id + '.jpg', big, 'gallery add');
+      await putFile(GAL_DIR + id + '_t.jpg', th, 'gallery add');
+      imgCache.set(GAL_DIR + id + '_t.jpg', URL.createObjectURL(a.thumb));
+      imgCache.set(GAL_DIR + id + '.jpg', URL.createObjectURL(a.blob));
+      /* 選んだ順に並ぶように入れる */
+      U.gallery.splice(done, 0, { id, at, name, gc: att.gc || 'ポーズ', text: bare ? '' : text, snap: snap && JSON.parse(JSON.stringify(snap)), img: GAL_DIR + id + '.jpg', thumb: GAL_DIR + id + '_t.jpg', n: 0, last: '' });
+      done++;
+    } catch (e) { err = String(e.message || e); break; }
+  }
+  const ok = done ? await saveUser(false) : true;
+  if (!err) {
     resetAttach();
     render();
-    if (ok) status('ギャラリーに保存したよ', true);
-  } catch (e) {
-    status(String(e.message || e), false);
-    if (btn) { btn.disabled = false; btn.innerHTML = ICON.save + '保存する'; }
+    if (ok) status(total > 1 ? `${total}枚をギャラリーに保存したよ` : 'ギャラリーに保存したよ', true);
+    return;
   }
+  /* 失敗：保存できた分は外して、残りはそのまま（もう一回押せば続きから） */
+  { for (const a of list.slice(0, done)) { const i = attList.indexOf(a); if (i >= 0) { URL.revokeObjectURL(a.url); attList.splice(i, 1); } } syncAtt(); }
+  render();
+  if (err) status(total > 1 ? `${done + 1}枚目で失敗：${err}（${done}枚は保存済み、残り${total - done}枚はもう一回押すと続きから）` : err, false);
 };
 
 /* ---------- 確認 ---------- */
