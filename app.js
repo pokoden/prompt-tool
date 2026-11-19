@@ -72,6 +72,7 @@ const ICON = {
   eye: '<svg viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></svg>',
   cam: '<svg viewBox="0 0 24 24"><path d="M4 8.5h3l1.8-2.5h6.4L17 8.5h3v10H4z"/><circle cx="12" cy="13" r="3.5"/></svg>',
   save: '<svg viewBox="0 0 24 24"><path d="M5 4.5h11l3 3v12H5z"/><path d="M8 4.5v5h7v-5M8 19.5v-6h8v6"/></svg>',
+  dl: '<svg viewBox="0 0 24 24"><path d="M12 4.5v10M7.5 10.5L12 15l4.5-4.5"/><path d="M5 15.5v3a1.5 1.5 0 0 0 1.5 1.5h11a1.5 1.5 0 0 0 1.5-1.5v-3"/></svg>',
   x: '<svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg>',
   ar: '<svg viewBox="0 0 24 24"><path d="M9 5.5l6.5 6.5L9 18.5"/></svg>'
 };
@@ -1119,7 +1120,7 @@ function hydrateImgs() {
   });
 }
 function galById(id) { return (U.gallery || []).find(g => g.id === id); }
-function bindFsSwipe(m, onClose, onNav) {
+function bindFsSwipe(m, onClose, onNav, onTap) {
   const img = m.querySelector('.fsimg');
   const box = m.querySelector('.mbox.fs');
   const pic = img && img.querySelector('img');
@@ -1154,22 +1155,53 @@ function bindFsSwipe(m, onClose, onNav) {
         return;
       }
     }
-    if (axis === 'y' && dy > 90) { onClose(); return; }
-    if (!axis) { onClose(); return; }
+    if (axis === 'y' && dy > 90) { if (box.classList.contains('only') && onTap) { reset(); onTap(); } else onClose(); return; }
+    if (!axis) { (onTap || onClose)(); return; }
     reset();
   };
-  img.addEventListener('touchstart', ev => { const t = ev.changedTouches[0]; start(t.clientX, t.clientY, t.identifier); }, { passive: true });
+  const skip = ev => ev.target.closest && ev.target.closest('.fssave');
+  img.addEventListener('touchstart', ev => { if (skip(ev)) return; const t = ev.changedTouches[0]; start(t.clientX, t.clientY, t.identifier); }, { passive: true });
   img.addEventListener('touchmove', ev => { const t = [...ev.touches].find(x => x.identifier === pid) || ev.touches[0]; if (t) move(t.clientX, t.clientY); }, { passive: true });
-  img.addEventListener('touchend', ev => { if (ev.cancelable) ev.preventDefault(); end(); }, { passive: false });
+  img.addEventListener('touchend', ev => { if (skip(ev)) return; if (ev.cancelable) ev.preventDefault(); end(); }, { passive: false });
   img.addEventListener('touchcancel', () => { moving = false; reset(); });
-  img.addEventListener('mousedown', ev => { ev.preventDefault(); start(ev.clientX, ev.clientY, -1); });
+  img.addEventListener('mousedown', ev => { if (skip(ev)) return; ev.preventDefault(); start(ev.clientX, ev.clientY, -1); });
   const onMove = ev => { if (pid === -1) move(ev.clientX, ev.clientY); };
   const onUp = () => { if (pid === -1) { end(); pid = 0; } };
-  const onKey = ev => { if (ev.key === 'ArrowRight') onNav(1, false); else if (ev.key === 'ArrowLeft') onNav(-1, false); else if (ev.key === 'Escape') onClose(); };
+  const onKey = ev => { if (ev.key === 'ArrowRight') onNav(1, false); else if (ev.key === 'ArrowLeft') onNav(-1, false); else if (ev.key === 'Escape') { if (box.classList.contains('only') && onTap) onTap(); else onClose(); } };
   window.addEventListener('mousemove', onMove);
   window.addEventListener('mouseup', onUp);
   window.addEventListener('keydown', onKey);
   m._tidyFs = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); window.removeEventListener('keydown', onKey); };
+}
+let galFs = false;
+const saveFiles = new Map();
+function imgFile(path, name) {
+  if (saveFiles.has(path)) return saveFiles.get(path);
+  const pr = fetchImg(path).then(u => u ? fetch(u).then(r => r.blob()) : null).then(async b => {
+    if (!b) return null;
+    const h = new Uint8Array(await b.slice(0, 4).arrayBuffer());
+    const png = h[0] === 0x89 && h[1] === 0x50, webp = h[0] === 0x52 && h[1] === 0x49;
+    const type = png ? 'image/png' : webp ? 'image/webp' : 'image/jpeg';
+    const ext = png ? 'png' : webp ? 'webp' : 'jpg';
+    const base = String(name || 'image').replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 40) || 'image';
+    return new File([b], base + '.' + ext, { type });
+  }).catch(() => null);
+  pr.then(f => { if (f) pr.file = f; else saveFiles.delete(path); });
+  saveFiles.set(path, pr);
+  return pr;
+}
+async function saveImg(g) {
+  const pr = imgFile(g.img, g.name || g.id);
+  const f = pr.file || await pr;
+  if (!f) { status('画像を読めなかった', false); return; }
+  if (navigator.canShare && navigator.share && navigator.canShare({ files: [f] })) {
+    try { await navigator.share({ files: [f] }); return; }
+    catch (e) { if (e && e.name === 'AbortError') return; }
+  }
+  const a = document.createElement('a');
+  const u = URL.createObjectURL(f);
+  a.href = u; a.download = f.name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(u), 4000);
 }
 function openGal(id, from) {
   const g = galById(id);
@@ -1179,8 +1211,9 @@ function openGal(id, from) {
   const m = $('modal');
   if (m._tidyFs) { m._tidyFs(); m._tidyFs = null; }
   const dots = ids.length > 1 && ids.length <= 15 ? `<div class="fsdots">${ids.map((x, i) => `<i class="${i === ix ? 'on' : ''}"></i>`).join('')}</div>` : '';
-  m.innerHTML = `<div class="mbox fs">
-    <div class="fsimg${from ? ' in-' + (from > 0 ? 'r' : 'l') : ''}"><img data-src="${esc(g.img)}" alt="">${ids.length > 1 ? `<span class="fsnum">${ix + 1} / ${ids.length}</span>` : ''}</div>
+  if (!from) galFs = false;
+  m.innerHTML = `<div class="mbox fs${galFs ? ' only' : ''}">
+    <div class="fsimg${from ? ' in-' + (from > 0 ? 'r' : 'l') : ''}"><img data-src="${esc(g.img)}" alt="">${ids.length > 1 ? `<span class="fsnum">${ix + 1} / ${ids.length}</span>` : ''}<button class="fssave" id="gSave" aria-label="保存">${ICON.dl}</button></div>
     <div class="fschrome">
       ${dots}
       <div class="mt">${esc(g.name || '')}</div>
@@ -1200,13 +1233,16 @@ function openGal(id, from) {
   const th = imgCache.get(g.thumb);
   if (th) im.src = th;
   fetchImg(g.img).then(u => { if (u && im.isConnected) im.src = u; });
+  imgFile(g.img, g.name || g.id);
   for (const d of [-1, 1]) { const n = galById(ids[ix + d]); if (n) fetchImg(n.img); }
+  const box = m.querySelector('.mbox.fs');
   bindFsSwipe(m, closeModal, (dir, dry) => {
     const nid = ids[ix + dir];
     if (!nid) return false;
     if (!dry) openGal(nid, dir);
     return true;
-  });
+  }, () => { galFs = !galFs; box.classList.toggle('only', galFs); });
+  $('gSave').onclick = ev => { ev.stopPropagation(); saveImg(g); };
   $('gClose').onclick = ev => { ev.stopPropagation(); closeModal(); };
   $('gCopy').onclick = ev => { ev.stopPropagation(); copyText(g.text || ''); };
   $('gApply').onclick = ev => { ev.stopPropagation(); closeModal(); applyGal(id); };

@@ -149,13 +149,18 @@ button.dan{color:var(--red);border-color:#5a2f33}
 .fsimg img{will-change:transform}
 .fsimg.in-l img{animation:inl .22s ease-out}.fsimg.in-r img{animation:inr .22s ease-out}
 @keyframes inl{from{transform:translateX(-40%);opacity:.2}}@keyframes inr{from{transform:translateX(40%);opacity:.2}}
-.fsnum{position:absolute;right:12px;top:calc(12px + env(safe-area-inset-top));padding:2px 10px;border-radius:12px;background:rgba(0,0,0,.55);border:1px solid var(--line2);color:var(--gold2);font-size:16px}
+.fsnum{position:absolute;left:12px;top:calc(12px + env(safe-area-inset-top));padding:2px 10px;border-radius:12px;background:rgba(0,0,0,.55);border:1px solid var(--line2);color:var(--gold2);font-size:16px}
 .fsdots{display:flex;justify-content:center;gap:5px;margin:0 0 8px}
 .fsdots i{width:6px;height:6px;border-radius:3px;background:#4a3b2a}
 .fsdots i.on{width:16px;background:var(--gold)}
 .row.five{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}.row.five>*{min-width:0;padding:0 2px;white-space:nowrap}
 .mfoot{position:sticky;bottom:-14px;margin:10px -14px -14px;padding:10px 14px 14px;background:linear-gradient(180deg,rgba(20,16,21,0),#141015 30%)}
 .fsimg img{display:block;max-width:100%;max-height:100%;object-fit:contain;pointer-events:none}
+.fssave{position:absolute;right:12px;top:calc(12px + env(safe-area-inset-top));width:40px;height:40px;padding:0;margin:0;border-radius:20px;background:rgba(0,0,0,.55);border:1px solid var(--gold);color:var(--gold2);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);touch-action:manipulation;z-index:2}
+.fssave svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.fssave:active{transform:scale(.92);background:rgba(201,162,92,.25)}
+.mbox.fs.only .fschrome,.mbox.fs.only .fssave,.mbox.fs.only .fsnum{display:none}
+.mbox.fs.only .fsimg{padding:0}
 .fschrome{flex:0 0 auto;max-height:42dvh;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:linear-gradient(180deg,transparent,rgba(8,6,8,.92) 16px);display:flex;flex-direction:column}
 .fschrome .mt{margin-bottom:6px}
 .fsprev{max-height:16dvh;margin:0 0 10px}
@@ -185,6 +190,6 @@ textarea.tsvtx{margin-top:10px;min-height:140px;font-family:ui-monospace,Menlo,m
 <div id="sheet"></div>
 <div id="modal"></div>
 <div id="sug" class="sug" hidden></div>
-<script src="app.js?v=296"></script>
+<script src="app.js?v=297"></script>
 </body>
 </html>
