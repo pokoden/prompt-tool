@@ -1,4 +1,4 @@
-/* プロンプト作成 r304 */
+/* プロンプト作成 r305 */
 (() => {
 const API = 'https://api.github.com/repos/pokoden/slot-data/contents/';
 const PARTS_PATH = 'prompt/parts.json';
@@ -22,9 +22,15 @@ const SLOTS = [
   { key: 'cl0', title: '服装', kind: 'clothes', slot: 0 },
   { key: 'cl1', title: '服装', kind: 'clothes', slot: 1 },
   { key: 'cl2', title: '服装', kind: 'clothes', slot: 2 },
+  { key: 'cl3', title: '服装', kind: 'clothes', slot: 3 },
+  { key: 'cl4', title: '服装', kind: 'clothes', slot: 4 },
+  { key: 'cl5', title: '服装', kind: 'clothes', slot: 5 },
   { key: 'acc0', title: 'アクセサリー', kind: 'acc' },
   { key: 'acc1', title: 'アクセサリー', kind: 'acc' },
   { key: 'acc2', title: 'アクセサリー', kind: 'acc' },
+  { key: 'acc3', title: 'アクセサリー', kind: 'acc' },
+  { key: 'acc4', title: 'アクセサリー', kind: 'acc' },
+  { key: 'acc5', title: 'アクセサリー', kind: 'acc' },
   { key: 'bg', title: '背景', kind: 'part', groups: [['背景セット']] },
   { key: 'prop0', title: '家具', kind: 'part', groups: FURN_GROUPS },
   { key: 'prop1', title: '家具', kind: 'part', groups: FURN_GROUPS },
@@ -36,13 +42,14 @@ const SLOTS = [
 /* 完成文の並び。あとで変えるときはここだけ直す（作成の行順と揃える） */
 const JOIN_KEYS = SLOTS.map(s => s.key);
 const CAT_ALIAS = { '顔モデル': '顔', '体型モデル': '体', '背景': '背景セット' };
-const ACC_KEYS = ['acc0', 'acc1', 'acc2'];
+const CL_KEYS = ['cl0', 'cl1', 'cl2', 'cl3', 'cl4', 'cl5'];
+const ACC_KEYS = ['acc0', 'acc1', 'acc2', 'acc3', 'acc4', 'acc5'];
 const PROP_KEYS = ['prop0', 'prop1', 'prop2'];
 const normCat = c => CAT_ALIAS[c] || c;
 const catDisp = c => c === '背景セット' ? '背景' : c;
 const Q_CAT = '品質向上';
 const QID = l => Q_CAT + '_' + l;
-const GAL_CATS = [['ポーズ', ['pose']], ['顔', ['face']], ['体', ['body']], ['髪型', ['hair']], ['表情', ['expr']], ['服装', ['cl0', 'cl1', 'cl2']], ['アクセサリー', ACC_KEYS], ['背景', ['bg']], ['家具', ['prop0', 'prop1', 'prop2']], ['光と影', ['light']], ['完成品', null], ['サンプル', null]];
+const GAL_CATS = [['ポーズ', ['pose']], ['顔', ['face']], ['体', ['body']], ['髪型', ['hair']], ['表情', ['expr']], ['服装', CL_KEYS], ['アクセサリー', ACC_KEYS], ['背景', ['bg']], ['家具', ['prop0', 'prop1', 'prop2']], ['光と影', ['light']], ['完成品', null], ['サンプル', null]];
 /* 旧ギャラリー分類名の読み替え（壁・床は無くなったのでポーズ扱い） */
 const GC_ALIAS = { '背景セット': '背景', '道具': '家具', '照明': '光と影' };
 const gcName = n => GC_ALIAS[n] || n;
@@ -384,7 +391,7 @@ function bumpUse(id) {
 
 function usedClothTyp(exceptKey) {
   const used = new Set();
-  for (const k of ['cl0', 'cl1', 'cl2']) {
+  for (const k of CL_KEYS) {
     if (k === exceptKey) continue;
     const v = st.sel[k];
     if (v && v.typ && v.typ !== '後付け' && v.typ !== '隠し') used.add(v.typ);
