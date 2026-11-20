@@ -1,4 +1,4 @@
-/* プロンプト作成 r303 */
+/* プロンプト作成 r304 */
 (() => {
 const API = 'https://api.github.com/repos/pokoden/slot-data/contents/';
 const PARTS_PATH = 'prompt/parts.json';
@@ -42,9 +42,9 @@ const normCat = c => CAT_ALIAS[c] || c;
 const catDisp = c => c === '背景セット' ? '背景' : c;
 const Q_CAT = '品質向上';
 const QID = l => Q_CAT + '_' + l;
-const GAL_CATS = [['ポーズ', ['pose']], ['顔', ['face']], ['体', ['body']], ['髪型', ['hair']], ['表情', ['expr']], ['服装', ['cl0', 'cl1', 'cl2']], ['アクセサリー', ACC_KEYS], ['背景', ['bg']], ['家具', ['prop0', 'prop1', 'prop2']], ['完成品', null], ['サンプル', null]];
+const GAL_CATS = [['ポーズ', ['pose']], ['顔', ['face']], ['体', ['body']], ['髪型', ['hair']], ['表情', ['expr']], ['服装', ['cl0', 'cl1', 'cl2']], ['アクセサリー', ACC_KEYS], ['背景', ['bg']], ['家具', ['prop0', 'prop1', 'prop2']], ['光と影', ['light']], ['完成品', null], ['サンプル', null]];
 /* 旧ギャラリー分類名の読み替え（壁・床は無くなったのでポーズ扱い） */
-const GC_ALIAS = { '背景セット': '背景', '道具': '家具' };
+const GC_ALIAS = { '背景セット': '背景', '道具': '家具', '照明': '光と影' };
 const gcName = n => GC_ALIAS[n] || n;
 const gcOf = g => (g && GAL_CATS.some(c => c[0] === gcName(g.gc))) ? gcName(g.gc) : 'ポーズ';
 const LOOK_CATS = [
