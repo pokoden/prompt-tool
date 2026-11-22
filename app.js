@@ -1,4 +1,4 @@
-/* プロンプト作成 r309 */
+/* プロンプト作成 r310 */
 (() => {
 const API = 'https://api.github.com/repos/pokoden/slot-data/contents/';
 const PARTS_PATH = 'prompt/parts.json';
@@ -53,6 +53,68 @@ const GAL_CATS = [['ポーズ', ['pose']], ['顔', ['face']], ['体', ['body']],
 /* 旧ギャラリー分類名の読み替え（壁・床は無くなったのでポーズ扱い） */
 const GC_ALIAS = { '背景セット': '背景', '道具': '家具', '照明': '光と影' };
 const gcName = n => GC_ALIAS[n] || n;
+/* r310: ギャラリー移行用 旧タイトル→新タイトル（2026-11-23の修正TSVから作成。3件の修正系プロンプトは含まない） */
+const OLD_TO_NEW = {
+  "1人　お尻見せ　真横　寝そべり　片脚上げ": "1人　お尻見せ　片脚上げ　寝そべり　真横",
+  "1人　お尻見せ　真横　前かがみ": "1人　お尻見せ　前かがみ　真横",
+  "1人　足裏見せ　斜め　椅子座り": "1人　足裏指見せ　椅子座り　斜め",
+  "1人　オナニー　正面　M字開脚": "1人　オナニー　M字開脚　正面",
+  "1人　お尻見せ　後ろ向き　膝つき　振り返り": "1人　お尻見せ　振り返り　膝つき　後ろ向き",
+  "1人　お尻見せ　斜め　仰向け　膝抱え": "1人　お尻見せ　膝抱え　仰向け　斜め",
+  "1人　フェラ待ち　正面　開脚座り": "1人　フェラ　開脚座り　正面",
+  "1人　騎乗位　正面　またがり": "1人　騎乗位　またがり　正面",
+  "1人　胸見せ　斜め　四つん這い　猫の手": "1人　胸見せ　猫の手　四つん這い　斜め",
+  "1人　胸見せ　正面　座り　片胸持ち上げ": "1人　胸見せ　片胸持ち上げ　座り　正面",
+  "1人　胸見せ　正面　仰向け　膝立て開き": "1人　胸見せ　膝立て開き　仰向け　正面",
+  "1人　胸見せ　正面　四つん這い　顔寄せ": "1人　胸見せ　顔寄せ　四つん這い　正面",
+  "1人　足指見せ　正面　座り": "1人　足裏指見せ　座り　正面",
+  "1人　足裏見せ　真横　寝そべり　膝抱え": "1人　足裏指見せ　膝抱え　寝そべり　真横",
+  "1人　足裏見せ　後ろ向き　うつ伏せ　足クロス": "1人　足裏指見せ　足クロス　うつ伏せ　後ろ向き",
+  "1人　足裏見せ　後ろ向き　うつ伏せ　足裏並べ": "1人　足裏指見せ　足裏並べ　うつ伏せ　後ろ向き",
+  "1人　足裏見せ　斜め　仰向け　足指反らし": "1人　足裏指見せ　足指反らし　仰向け　斜め",
+  "1人　足裏見せ　正面　M字開脚": "1人　足裏指見せ　M字開脚　正面",
+  "1人　足裏見せ　正面　座り　片脚伸ばし": "1人　足裏指見せ　片脚伸ばし　座り　正面",
+  "1人　脇見せ　斜め　立ち": "1人　脇見せ　立ち　斜め",
+  "2人　キス　真横　上に乗り": "2人　キス　上に乗り　真横",
+  "2人　ベロキス　真横　寝そべり　片脚上げ": "2人　キス　片脚上げ　寝そべり　真横",
+  "2人　クンニ直前　真横　仰向け": "2人　クンニ　仰向け　真横",
+  "2人　クンニ　斜め　四つん這い　後ろから": "2人　クンニ　後ろから　四つん這い　斜め",
+  "2人　パンツ脱がせ　斜め　四つん這い": "2人　パンツ脱がせ　四つん這い　斜め",
+  "2人　手マン　真横　寝そべり　脚抱え": "2人　手マン　脚抱え　寝そべり　真横",
+  "2人　正常位キス　真横　仰向け": "2人　正常位　仰向け　真横",
+  "2人　側位　真横　寝そべり　片脚抱え": "2人　側位　片脚抱え　寝そべり　真横",
+  "2人　足指舐め　真横　寝そべり": "2人　足指舐め　寝そべり　真横",
+  "3人　クンニ＋首キス　正面　座り": "3人　クンニ　座り　正面",
+  "2人　ベロキス＋胸揉み　斜め　四つん這い": "2人　キス　四つん這い　斜め",
+  "2人　キス　真横　跨り　お尻掴み": "2人　キス　お尻掴み　跨り　真横",
+  "2人　キス　真横　抱っこ": "2人　キス　抱っこ　真横",
+  "2人　キス　真横　立ち　背伸び": "2人　キス　背伸び　立ち　真横",
+  "2人　ベロキス　真横　立ち　抱き合い": "2人　キス　抱き合い　立ち　真横",
+  "2人　クンニ　斜め　座り　頭押さえ": "2人　クンニ　頭押さえ　座り　斜め",
+  "2人　クンニ　斜め　仰向け": "2人　クンニ　仰向け　斜め",
+  "2人　バック　斜め　膝立ち　腕引き": "2人　バック　腕引き　膝立ち　斜め",
+  "2人　パフパフ　斜め　前かがみ": "2人　パフパフ　前かがみ　斜め",
+  "2人　パンツ脱がされ　後ろ向き　前かがみ": "2人　パンツ脱がせ　前かがみ　後ろ向き",
+  "2人　フェラ　斜め　膝立ち": "2人　フェラ　膝立ち　斜め",
+  "2人　フェラ　真横　膝立ち": "2人　フェラ　膝立ち　真横",
+  "2人　騎乗位　正面　またがり": "2人　騎乗位　またがり　正面",
+  "2人　胸揉み　正面　仰向け　両腕上げ": "2人　胸揉み　両腕上げ　仰向け　正面",
+  "2人　胸揉み＋キス　真横　立ち　壁手つき": "2人　胸揉み　壁手つき　立ち　真横",
+  "2人　手コキ＋キス　真横　添い寝": "2人　手コキ　添い寝　真横",
+  "2人　手コキ　正面　うつ伏せ": "2人　手コキ　うつ伏せ　正面",
+  "2人　手マン　後ろ向き　四つん這い": "2人　手マン　四つん這い　後ろ向き",
+  "2人　手マン＋キス　斜め　座り": "2人　手マン　座り　斜め",
+  "2人　手マン　正面　座り　後ろから": "2人　手マン　後ろから　座り　正面",
+  "2人　手マン　正面　仰向け": "2人　手マン　仰向け　正面",
+  "2人　足コキ　斜め　座り": "2人　足コキ　座り　斜め",
+  "3人　バック＋フェラ　真横　四つん這い": "3人　バック　四つん這い　真横",
+  "2人　クンニ　斜め　仰向け　肘支え": "2人　クンニ　肘支え　仰向け　斜め",
+  "1人　服上げ　斜め　立ち": "1人　胸見せ　立ち　斜め",
+  "1人　お尻見せ　後ろ向き　立ち　前かがみ": "1人　お尻見せ　前かがみ　立ち　後ろ向き",
+  "2人　騎乗位　正面　座り": "2人　騎乗位　座り　正面",
+  "2人　手マン　真横　立ち": "2人　手マン　立ち　真横",
+};
+
 const gcOf = g => (g && GAL_CATS.some(c => c[0] === gcName(g.gc))) ? gcName(g.gc) : 'ポーズ';
 const LOOK_CATS = [
   { key: 'pose', name: 'ポーズ・カメラ', pose: true },
@@ -1555,7 +1617,8 @@ function renderGal() {
   const list = galList();
   const cnt = {};
   for (const g of galLive()) cnt[gcOf(g)] = (cnt[gcOf(g)] || 0) + 1;
-  return `<div class="card"><div class="chips gcs">${GAL_CATS.map(([n]) => `<button class="chip${galCat === n ? ' on' : ''}" onclick="setGalCat('${n}')">${n}${cnt[n] ? `<span class="gcn">${cnt[n]}</span>` : ''}</button>`).join('')}</div>${sortBar(galSort, 'setGalSort', GAL_SORTS)}</div>
+  const migN = countMigratableGallery();
+  return `<div class="card"><div class="chips gcs">${GAL_CATS.map(([n]) => `<button class="chip${galCat === n ? ' on' : ''}" onclick="setGalCat('${n}')">${n}${cnt[n] ? `<span class="gcn">${cnt[n]}</span>` : ''}</button>`).join('')}</div>${sortBar(galSort, 'setGalSort', GAL_SORTS)}${migN ? `<div class="row"><button class="b wide" onclick="migrateGalleryPoses()">古いポーズを新しいタイトルに差し替え（${migN}件）</button></div>` : ''}</div>
   ${list.length ? `<div class="grid">${list.map(g => `<div class="gt" data-id="${esc(g.id)}">
       <div class="ph"><img data-src="${esc(g.thumb || g.img)}" alt=""></div>
       <div class="gn">${esc(g.name || '')}</div>
@@ -1776,6 +1839,76 @@ function applyKeysFor(g) {
   }
   return keys;
 }
+
+/* ---------- r310: ギャラリーの古いポーズを新しいタイトルに差し替え ---------- */
+function migOldTitleOf(g) {
+  const v = g && g.snap && g.snap.sel && g.snap.sel.pose;
+  if (!v) return '';
+  const lab = String(v.label || '').trim();
+  if (OLD_TO_NEW[lab]) return lab;
+  const byId = v.id ? poseById(v.id) : null;
+  const t = byId ? String(byId.title || '').trim() : '';
+  if (OLD_TO_NEW[t]) return t;
+  return '';
+}
+function countMigratableGallery() {
+  return galLive().filter(g => migOldTitleOf(g)).length;
+}
+function migrateGalleryPosesCore() {
+  const byTitle = new Map(allPoses().map(p => [p.title, p]));
+  const newTitles = new Set(Object.values(OLD_TO_NEW));
+  const r = { remapped: 0, alreadyNew: 0, notInMap: 0, missing: [], keptOutEdit: [] };
+  for (const g of galLive()) {
+    const sel = g.snap && g.snap.sel;
+    const v = sel && sel.pose;
+    if (!v) { r.notInMap++; continue; }
+    const oldTitle = migOldTitleOf(g);
+    if (!oldTitle) {
+      const lab = String(v.label || '').trim();
+      const byId = v.id ? poseById(v.id) : null;
+      const t = byId ? String(byId.title || '').trim() : '';
+      if (newTitles.has(lab) || newTitles.has(t)) r.alreadyNew++;
+      else r.notInMap++;
+      continue;
+    }
+    const newTitle = OLD_TO_NEW[oldTitle];
+    const np = byTitle.get(newTitle);
+    if (!np) { r.missing.push(oldTitle + ' → ' + newTitle); continue; }
+    const oldId = v.id;
+    v.id = np.id; v.label = newTitle; v.text = np.body;
+    if (g.name && g.name.indexOf(oldTitle) >= 0) g.name = g.name.split(oldTitle).join(newTitle);
+    /* g.text は更新したスナップから組み立て直す（手で直した最終文のときはそのまま残す） */
+    const savedSel = st.sel, savedOut = st.outputEdit;
+    try {
+      restoreSnap(g.snap);
+      if (g.outEdit) r.keptOutEdit.push(g.name || g.id);
+      else g.text = textFor(gcOf(g), false);
+    } finally { st.sel = savedSel; st.outputEdit = savedOut; }
+    if (oldId && oldId !== np.id) {
+      if (U.use && U.use[oldId]) {
+        const o = U.use[oldId], n = U.use[np.id] || { n: 0 };
+        U.use[np.id] = { n: (n.n || 0) + (o.n || 0), at: (o.at || '') > (n.at || '') ? o.at : n.at };
+        delete U.use[oldId];
+      }
+      if (U.poseEdit && U.poseEdit[oldId]) {
+        if (!U.poseEdit[np.id]) U.poseEdit[np.id] = U.poseEdit[oldId];
+        delete U.poseEdit[oldId];
+      }
+    }
+    r.remapped++;
+  }
+  return r;
+}
+window.migrateGalleryPoses = async () => {
+  const n = countMigratableGallery();
+  if (!n) { status('差し替えるギャラリーはないよ', true); return; }
+  if (!(await ask('ギャラリーの古いポーズを新しいタイトルに差し替えるよ。\n対象 ' + n + '件\n古いポーズはまだ消さないよ。', '差し替える', 'やめる'))) return;
+  const r = migrateGalleryPosesCore();
+  await saveUser(false);
+  render();
+  modal(`<div class="mt">差し替えしたよ</div><div class="prev">差し替えた件数：${r.remapped}件<br>すでに新しいポーズ：${r.alreadyNew}件<br>対象外（修正系など）：${r.notInMap}件${r.missing.length ? '<br>見つからなかった：' + esc(r.missing.join('、')) : ''}${r.keptOutEdit.length ? '<br>手で直した最終文を残した：' + r.keptOutEdit.length + '件' : ''}<br>古いポーズはまだ消してないよ。確認してから消してね。</div><div class="row two"><button class="b" onclick="closeModal()">閉じる</button></div>`, 'small');
+};
+
 function applyGal(id) {
   const g = galById(id);
   if (!g) return;
