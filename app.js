@@ -1,4 +1,4 @@
-/* プロンプト作成 r307 */
+/* プロンプト作成 r308 */
 (() => {
 const API = 'https://api.github.com/repos/pokoden/slot-data/contents/';
 const PARTS_PATH = 'prompt/parts.json';
@@ -510,7 +510,7 @@ function restoreRow(slot, v, dropMissing) {
   if (!v.custom && id) cur = flatOptions(slot).find(x => x.id === id);
   if (dropMissing && !v.custom && id && !cur) return null;
   const out = cur ? recOf(cur) : Object.assign({}, v);
-  if (cur && v.text != null && v.text !== '' && cur.text !== v.text) out.text = v.text;
+  if (cur && v.edited && v.text != null && v.text !== '' && cur.text !== v.text) out.text = v.text;
   if (v.edited) out.edited = true;
   return out;
 }
@@ -1086,6 +1086,7 @@ window.overwriteGallery = async () => {
     }
     g.text = bare ? '' : text;
     g.snap = bare ? null : snapshot();
+    g.outEdit = st.outputEdit != null;
     g.name = galSaveName() || (bare ? 'サンプル' : '');
     g.gc = att.gc || gcOf(g);
     g.ed = now();
@@ -1130,7 +1131,7 @@ window.saveGallery = async () => {
         const id = 'g_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
         const bare = isBareCat(gc);
         const snap = bare ? null : snapshotFor(gc);
-        U.gallery.splice(done, 0, { id, at, name: name || (bare ? 'サンプル' : ''), gc, text: textFor(gc, bare), snap: snap && JSON.parse(JSON.stringify(snap)), img: imgPath, thumb: thumbPath, n: 0, last: '' });
+        U.gallery.splice(done, 0, { id, at, name: name || (bare ? 'サンプル' : ''), gc, text: textFor(gc, bare), snap: snap && JSON.parse(JSON.stringify(snap)), outEdit: st.outputEdit != null, img: imgPath, thumb: thumbPath, n: 0, last: '' });
         done++;
       }
       doneImgs++;
@@ -1784,7 +1785,7 @@ function applyGal(id) {
   const keys = applyKeysFor(g);
   if (!keys) {
     restoreSnap(g.snap);
-    if (g.text && assemble() !== g.text) st.outputEdit = g.text;
+    if (g.outEdit && g.text && assemble() !== g.text) st.outputEdit = g.text;
     const ed = SLOTS.find(slot => st.sel[slot.key] && st.sel[slot.key].edited && resolvedText(slot.key));
     if (ed) st.open = ed.key;
   } else {
