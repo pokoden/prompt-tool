@@ -1,4 +1,4 @@
-/* プロンプト作成 r308 */
+/* プロンプト作成 r309 */
 (() => {
 const API = 'https://api.github.com/repos/pokoden/slot-data/contents/';
 const PARTS_PATH = 'prompt/parts.json';
@@ -585,7 +585,7 @@ function closeModal() { hidePick(); const m = $('modal'); if (m._tidyFs) { m._ti
 window.closeModal = closeModal;
 function ask(msg, yes, no) {
   return new Promise(res => {
-    modal(`<div class="ask">${esc(msg)}</div><div class="row two"><button class="sub" id="askNo">${esc(no || 'いいえ')}</button><button class="b" id="askYes">${esc(yes || 'はい')}</button></div>`, 'small');
+    modal(`<div class="ask">${esc(msg).replace(/\n/g, '<br>')}</div><div class="row two"><button class="sub" id="askNo">${esc(no || 'いいえ')}</button><button class="b" id="askYes">${esc(yes || 'はい')}</button></div>`, 'small');
     $('askYes').onclick = () => { closeModal(); res(true); };
     $('askNo').onclick = () => { closeModal(); res(false); };
     $('modal').onclick = ev => { if (ev.target === $('modal')) { closeModal(); res(false); } };
@@ -1833,7 +1833,7 @@ function renderAdd() {
 }
 window.setAddCat = v => { const c = LOOK_CATS.find(x => x.key === v); if (c) switchAddCat(c); };
 window.setAddPpl = v => LS.set('pr_addppl', v);
-window.addPart = () => {
+window.addPart = async () => {
   const dest = applyCatInput('na_cat');
   if (!dest) { if ($('na_cat')) $('na_cat').focus(); return; }
   const c = dest;
@@ -1842,6 +1842,31 @@ window.addPart = () => {
   const sub = (($('na_sub') && $('na_sub').value) || '').trim();
   if (!label) { status('タイトルを入れてね', false); $('na_lab').focus(); return; }
   if (c.pose) {
+    const problems = checkPoseTitle(label);
+    if (problems.length) {
+      if (!(await ask('タイトルの形が違うよ。\n' + problems.join('\n') + '\nこのまま追加する？', 'このまま追加', '直す'))) return;
+    }
+    const dup = allPoses().find(p => p.title === label);
+    if (dup) {
+      if (!(await ask('同じタイトルのポーズがあります。「' + label + '」を上書きしますか？', '上書き', 'やめる'))) return;
+      const people = ($('na_ppl') && $('na_ppl').value) || '1人';
+      U.posesExtra = U.posesExtra || [];
+      const patch = { title: label, body: text, zoom: ($('na_zm') && $('na_zm').value) || '', people };
+      if (sub) {
+        patch.cat = poseCat(sub);
+        const g = allPoses().find(p => p.cat === patch.cat && p.catGroup);
+        if (g) patch.catGroup = g.catGroup;
+      }
+      if (U.posesExtra.some(x => x.id === dup.id)) Object.assign(U.posesExtra.find(x => x.id === dup.id), patch);
+      else { U.poseEdit = U.poseEdit || {}; U.poseEdit[dup.id] = Object.assign({}, U.poseEdit[dup.id] || {}, patch); }
+      LS.set('pr_addppl', people);
+      LS.set('pr_addcat', c.key);
+      LS.set('pr_addsub_' + c.key, sub);
+      render();
+      status('上書きしたよ', true);
+      saveUser(false).then(ok => { if (ok) status('上書きして保存したよ', true); });
+      return;
+    }
     const people = ($('na_ppl') && $('na_ppl').value) || '1人';
     U.posesExtra = U.posesExtra || [];
     const it = { id: uid(), title: label, body: text, zoom: ($('na_zm') && $('na_zm').value) || '', people, at: now() };
@@ -1902,6 +1927,28 @@ function parseTsv(text) {
   row.push(cell); rows.push(row);
   return rows.filter(r => r.some(c => String(c).trim()));
 }
+/* ---------- ポーズのタイトルチェック（r309） ----------
+   形：「人数　行為　姿勢　向き」4語、または「人数　行為　特徴　姿勢　向き」5語。
+   全角スペース区切り、1語目=1人/2人/3人、最後=正面/真横/斜め/後ろ向き/真上。
+   同じタイトルは上書きになるので、5語目（特徴）で同じ組み合わせを区別する。 */
+const TITLE_ORIENTS = ['正面', '真横', '斜め', '後ろ向き', '真上'];
+const TITLE_PEOPLE = ['1人', '2人', '3人'];
+const TITLE_FURNITURE = ['ソファー', 'ソファ', 'ベッド', 'ドア', '扉', '畳', 'トイレ', '風呂'];
+function checkPoseTitle(title) {
+  const t = String(title || '').trim();
+  const problems = [];
+  if (!t) return ['タイトルが空だよ'];
+  if (/ /.test(t)) problems.push('半角スペースが入ってるよ。全角スペース（　）で区切ってね');
+  const toks = t.split('　');
+  if (toks.some(x => !x)) problems.push('空の語があるよ');
+  if (toks.length !== 4 && toks.length !== 5) problems.push('「人数　行為　姿勢　向き」か「人数　行為　特徴　姿勢　向き」の4語か5語にしてね（今は' + toks.length + '語だよ）');
+  if (toks[0] && !TITLE_PEOPLE.includes(toks[0])) problems.push('1語目は人数（1人・2人・3人）にしてね');
+  const last = toks[toks.length - 1];
+  if (last && !TITLE_ORIENTS.includes(last)) problems.push('最後は向き（正面・真横・斜め・後ろ向き・真上）にしてね');
+  if (toks.some(x => TITLE_FURNITURE.includes(x))) problems.push('タイトルに家具の名前は入れないでね');
+  return problems;
+}
+window.checkPoseTitle = checkPoseTitle;
 const POSE_COLS = { 'タイトル': 'title', 'プロンプト': 'body', 'ズーム': 'zoom', 'オススメ画像向き': 'orient', '人数': 'people', 'ポーズ': 'cat', 'セリフ': 'line' };
 function impMode(kind, n, cats) {
   return new Promise(res => {
@@ -2056,6 +2103,36 @@ window.impTsvPaste = async () => {
   tsvDraft = v;
   if (await impTsvText(v)) { tsvDraft = ''; const e2 = $('tsvTx'); if (e2) e2.value = ''; }
 };
+/* r309: 取込前にポーズのタイトルを確認する。形式違い・ファイル内重複があれば
+   一覧を出して、取り込むかやめるか聞く。タイトルは勝手に直さない。 */
+async function impTitleCheck(rows, head) {
+  const ti = head.indexOf('タイトル');
+  if (ti < 0) return true;
+  const titles = rows.map(c => String(c[ti] || '').trim()).filter(Boolean);
+  const seen = new Set(), dupIn = [];
+  for (const t of titles) { if (seen.has(t)) dupIn.push(t); else seen.add(t); }
+  const bad = [], seenBad = new Set();
+  for (const t of titles) {
+    const pr = checkPoseTitle(t);
+    if (pr.length && !seenBad.has(t)) { seenBad.add(t); bad.push({ title: t, problems: pr }); }
+  }
+  const existing = new Set(allPoses().map(p => p.title));
+  const dupEx = [...new Set(titles.filter(t => existing.has(t)))];
+  if (!bad.length && !dupIn.length) return true;
+  return new Promise(res => {
+    const done = v => { closeModal(); res(v); };
+    modal(`<div class="impHd"><span class="pi">${ICON.io}</span><div><div class="mt">タイトルを確認してね</div><div class="impSub">形式が違うタイトル: ${bad.length}件・ファイル内で重複: ${[...new Set(dupIn)].length}件・上書きされるタイトル: ${dupEx.length}件</div></div></div>
+      ${bad.length ? `<div class="impRes">${bad.slice(0, 10).map(b => `<div><span>${esc(b.title)}</span><b>${esc(b.problems.join('／'))}</b></div>`).join('')}</div>` : ''}
+      ${dupIn.length ? `<div class="impSub">ファイル内で重複: ${esc([...new Set(dupIn)].slice(0, 10).join('、'))}</div>` : ''}
+      ${dupEx.length ? `<div class="impSub">上書きされるタイトル: ${esc(dupEx.slice(0, 10).join('、'))}</div>` : ''}
+      <div class="impSub">このまま取り込むよ。形式が違うタイトルも、そのまま入るよ。</div>
+      <button class="b wide impBtn" id="impTitleGo">このまま取り込む</button>
+      <button class="sub wide impBtn" id="impTitleNo">やめる</button>`, 'small');
+    $('impTitleGo').onclick = () => done(true);
+    $('impTitleNo').onclick = () => done(false);
+    $('modal').onclick = ev => { if (ev.target === $('modal')) done(false); };
+  });
+}
 async function impTsvText(text) {
   const all = parseTsv(text);
   if (all.length < 2) { status('取り込む行がないよ', false); return false; }
@@ -2074,6 +2151,7 @@ async function impTsvText(text) {
   let cats;
   if (kind === 'pose') { const ci = head.indexOf('ポーズ'); cats = ci >= 0 ? [...new Set(rows.map(c => poseCat(String(c[ci] || '').trim())).filter(Boolean))] : []; }
   else { const ci = head.indexOf('分類') >= 0 ? head.indexOf('分類') : head.indexOf('今のタブ'); cats = ci >= 0 ? [...new Set(rows.map(c => normCat(String(c[ci] || '').trim() || '服装')))] : ['服装']; }
+  if (kind === 'pose') { if (!(await impTitleCheck(rows, head))) return false; }
   const mode = await impMode(kind, rows.length, kind === 'pose' ? cats : cats.map(catDisp));
   if (!mode) return false;
   if (mode === 'rep') {
