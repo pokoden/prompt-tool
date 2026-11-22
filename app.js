@@ -1,4 +1,4 @@
-/* プロンプト作成 r305 */
+/* プロンプト作成 r307 */
 (() => {
 const API = 'https://api.github.com/repos/pokoden/slot-data/contents/';
 const PARTS_PATH = 'prompt/parts.json';
@@ -889,26 +889,37 @@ function showSug(key, q, forceAll) {
   const groups = optionsFor(slot, slot.kind === 'pose' ? peopleSel : '');
   const saved = slot.kind === 'pose' ? savedPoseIds() : null;
   const filtering = !!(s && !forceAll);
+  /* r307: 標準以外（最近追加・使用回数が多い・名前順・最近使った）は全グループを1つにまとめて全体で並べ替え、見出し無しのフラット表示にする。標準は従来どおりグループ表示。 */
+  let flatItems = null;
+  if (listSort !== 'def') {
+    const all = [];
+    for (const g of groups) {
+      const items = filtering ? g.items.filter(it => (it.label || '').includes(s) || (it.text || '').includes(s)) : g.items;
+      for (const it of items) all.push(it);
+    }
+    flatItems = sortList(all, listSort).slice(0, filtering ? 40 : 200);
+    if (!flatItems.length) { box.hidden = true; box.innerHTML = ''; return; }
+  }
   const filtered = [];
   for (const g of groups) {
+    if (flatItems) break;
     let items = filtering ? g.items.filter(it => (it.label || '').includes(s) || (it.text || '').includes(s)) : g.items;
-    if (listSort !== 'def') items = sortList(items, listSort);
     if (items.length) filtered.push({ group: g.group, items: items.slice(0, filtering ? 40 : 200) });
   }
-  if (!filtered.length) { box.hidden = true; box.innerHTML = ''; return; }
+  if (!flatItems && !filtered.length) { box.hidden = true; box.innerHTML = ''; return; }
   const keepScroll = box.dataset.key === key && !box.hidden ? box.scrollTop : 0;
   box.dataset.key = key;
   const single = filtered.length === 1;
   const curId = st.sel[key] && st.sel[key].id;
   const sorts = `<div class="sorts">${SORTS.map(([k, n]) => `<button class="sc${listSort === k ? ' on' : ''}" data-sort="${k}">${n}</button>`).join('')}</div>`;
-  const opt = it => `<button class="opt${curId === it.id ? ' cur' : ''}" data-id="${esc(it.id)}">${saved && !saved.has(it.id) ? '<span class="mi">未</span>' : ''}${esc(it.label)}</button>`;
-  box.innerHTML = sorts + filtered.map(g => {
+  const opt = it => { const n = (U.use && U.use[it.id] && U.use[it.id].n) || 0; return `<button class="opt${curId === it.id ? ' cur' : ''}" data-id="${esc(it.id)}">${saved && !saved.has(it.id) ? '<span class="mi">未</span>' : ''}${esc(it.label)}${n ? `<span class="cnt">${n}</span>` : ''}</button>`; };
+  box.innerHTML = sorts + (flatItems ? flatItems.map(opt).join('') : filtered.map(g => {
     if (single) return g.items.map(opt).join('');
     const open = filtering || st.og.has(g.group);
     const has = curId && g.items.some(it => it.id === curId);
     return `<button class="gh${open ? ' op' : ''}" data-g="${esc(g.group)}"><span class="ar">${ICON.ar}</span><span class="gn2">${esc(g.group)}</span>${has ? `<span class="cnt">●</span>` : `<span class="cnt">${g.items.length}</span>`}</button>`
       + (open ? `<div class="gi">${g.items.map(opt).join('')}</div>` : '');
-  }).join('');
+  }).join(''));
   const r = inp.getBoundingClientRect();
   const width = Math.min(Math.max(r.width + 96, 260), window.innerWidth - 16);
   let top = r.bottom + 4;
@@ -1143,6 +1154,33 @@ function lookItems(cat) {
   if (cat.pose) return allPoses().map(p => ({ kind: 'pose', id: p.id, label: p.title, text: p.body, zoom: p.zoom, sub: p.cat || '', at: p.at, _ix: p._ix }));
   return allParts().filter(p => cat.cats.includes(p.cat) && p.label && p.label !== '✖️').map(p => ({ kind: 'part', id: p.id, label: p.label, text: p.text, sub: p.sub || p.cat, at: p.at, _ix: p._ix }));
 }
+/* r306: 確認タブの「反映」— この1件だけ作成タブの該当スロットに入れる（他のスロットは触らない） */
+window.applyLookItem = (kind, id) => {
+  let slot = null, v = null;
+  if (kind === 'pose') {
+    const p = poseById(id);
+    if (!p) return;
+    slot = SLOTS.find(s => s.key === 'pose');
+    v = { id: p.id, label: p.title, text: p.body, zoom: p.zoom, people: p.people };
+  } else {
+    const p = partById(id);
+    if (!p) return;
+    const rec = { id: p.id, label: p.label, text: p.text, typ: p.typ, cat: p.cat, sub: p.sub };
+    const cands = SLOTS.filter(s => slotHolds(s, 'part', rec));
+    if (!cands.length) return;
+    slot = cands.length === 1 ? cands[0] : (cands.find(s => !st.sel[s.key]) || cands[0]);
+    v = rec;
+  }
+  st.sel[slot.key] = restoreRow(slot, v);
+  if (slot.key === 'lock') rememberQuality(st.sel.lock);
+  ensureLock();
+  st.outputEdit = null; st.list = ''; hideSug();
+  bumpUse(id);
+  persistMake();
+  tab = 'make'; LS.set('pr_tab', tab);
+  render(); window.scrollTo(0, 0);
+  status('反映したよ', true);
+};
 function renderLook() {
   if (!D) return tokenCard();
   const cat = LOOK_CATS.find(c => c.key === look.cat);
@@ -1162,10 +1200,13 @@ function renderLook() {
       for (const it of items) {
         if (look.sort === 'def' && it.sub !== last) { html += `<div class="g">${esc(it.sub || '')}</div>`; last = it.sub; }
         const n = (U.use && U.use[it.id] && U.use[it.id].n) || 0;
-        html += `<div class="li lp" data-kind="${it.kind}" data-id="${esc(it.id)}">
-          <span class="lt">${esc(it.label)}</span>${n ? `<span class="cnt">${n}</span>` : ''}
-          <button class="mini" onclick="editItem('${it.kind}','${esc(it.id)}')">編集</button>
-          <button class="mini dan" onclick="delItem('${it.kind}','${esc(it.id)}')">削除</button>
+        html += `<div class="swipe-wrap" data-kind="${it.kind}" data-id="${esc(it.id)}">
+          <div class="swipe-under"><button class="mini dan" onclick="delItem('${it.kind}','${esc(it.id)}')">削除</button></div>
+          <div class="li lp swipe-row" data-kind="${it.kind}" data-id="${esc(it.id)}">
+            <span class="lt">${esc(it.label)}</span>${n ? `<span class="cnt">${n}</span>` : ''}
+            <button class="mini" onclick="editItem('${it.kind}','${esc(it.id)}')">編集</button>
+            <button class="mini" onclick="applyLookItem('${it.kind}','${esc(it.id)}')">反映</button>
+          </div>
         </div>`;
       }
       list = `<div class="card list">${html}</div>`;
@@ -2180,6 +2221,72 @@ window.addEventListener('scroll', () => {
   }
 }, { passive: true });
 
+/* r306: 確認タブのスワイプ削除 — .swipe-row を左へ88pxまで引くと下の削除が出る。
+   長押しプレビュー（longPress）は移動>10pxでキャンセルされるので、スワイプと競合しない。
+   ボタン上からのドラッグはスワイプにしない（編集・反映のタップを優先）。 */
+function bindLookSwipe(app) {
+  const W = 88, OPEN_AT = 44;
+  let row = null, sx = 0, sy = 0, dx = 0, dragging = false, swipedAt = 0, isMouse = false, ignoreMouseup = false;
+  const setX = (r, x) => { r.style.transform = x ? `translateX(${x}px)` : ''; };
+  const closeAll = except => { app.querySelectorAll('.swipe-row.open').forEach(r => { if (r !== except) { r.classList.remove('open'); setX(r, 0); } }); };
+  const snap = r => {
+    r.style.transition = '';
+    if (dx < -OPEN_AT) { r.classList.add('open'); setX(r, -W); }
+    else { r.classList.remove('open'); setX(r, 0); }
+    swipedAt = Date.now(); dx = 0; dragging = false;
+  };
+  const begin = (r, x, y, mouse) => {
+    if (!r || !app.contains(r)) return;
+    row = r; sx = x; sy = y; dx = 0; dragging = false; isMouse = !!mouse;
+    closeAll(r);
+    r.style.transition = 'none';
+  };
+  const move = (x, y) => {
+    if (!row) return;
+    const mx = x - sx, my = y - sy;
+    if (!dragging && Math.abs(mx) > 8 && Math.abs(mx) > Math.abs(my) * 1.5) {
+      dragging = true;
+      /* マウスは longPress の移動キャンセルが無いので、ドラッグ開始時に
+         合成 mouseup を行へ送って長押しタイマーを止める（プレビュー誤開防止）。
+         この合成 mouseup は自分の window mouseup では無視する */
+      if (isMouse) { ignoreMouseup = true; row.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true })); }
+    }
+    if (!dragging) return;
+    dx = Math.max(-W, Math.min(0, mx));
+    setX(row, dx);
+  };
+  const end = () => { if (!row) return; const r = row; row = null; snap(r); };
+  app.addEventListener('touchstart', e => {
+    const r = e.target.closest ? e.target.closest('.swipe-row') : null;
+    if (!r || e.target.closest('button')) return;
+    begin(r, e.touches[0].clientX, e.touches[0].clientY, false);
+  }, { passive: true });
+  app.addEventListener('touchmove', e => {
+    if (!row) return;
+    move(e.touches[0].clientX, e.touches[0].clientY);
+    if (dragging && e.cancelable) e.preventDefault();
+  }, { passive: false });
+  app.addEventListener('touchend', end);
+  app.addEventListener('touchcancel', () => { if (row) { const r = row; row = null; r.style.transition = ''; setX(r, r.classList.contains('open') ? -W : 0); dragging = false; dx = 0; } });
+  app.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    const r = e.target.closest ? e.target.closest('.swipe-row') : null;
+    if (!r || e.target.closest('button')) return;
+    begin(r, e.clientX, e.clientY, true);
+  });
+  window.addEventListener('mousemove', e => { if (row) move(e.clientX, e.clientY); });
+  window.addEventListener('mouseup', () => { if (ignoreMouseup) { ignoreMouseup = false; return; } end(); });
+  /* 開いている行のタイトル部分をタップしたら閉じる。スワイプ直後のゴーストクリックは無視する */
+  app.addEventListener('click', e => {
+    if (Date.now() - swipedAt < 350) return;
+    const open = app.querySelector('.swipe-row.open');
+    if (!open) return;
+    const t = e.target;
+    if (t.closest && t.closest('.swipe-under')) return;
+    if (t.closest && t.closest('.swipe-row') === open && !t.closest('button')) { open.classList.remove('open'); setX(open, 0); }
+    else if (!t.closest || !t.closest('.swipe-wrap')) { open.classList.remove('open'); setX(open, 0); }
+  }, true);
+}
 function bindOnce() {
   bindPick();
   const sug = $('sug');
@@ -2198,6 +2305,7 @@ function bindOnce() {
     if (it) showBody(it.label, it.text, it.zoom);
   }, el => pickItem(sug.dataset.key, el.dataset.id));
   const app = $('app');
+  bindLookSwipe(app);
   longPress(app, '.lp', el => {
     const it = itemOf(el.dataset.kind, el.dataset.id);
     if (it) showBody(it.label, it.text, it.zoom);

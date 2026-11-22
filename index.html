@@ -72,6 +72,8 @@ main[data-tab]:not([data-tab=make]){padding-bottom:calc(30px + env(safe-area-ins
 .sug .gh.op .ar{transform:rotate(90deg);border-color:var(--gold);background:rgba(217,169,92,.15)}
 .sug .gh .cnt{min-width:30px}
 .sug .opt .mi{color:var(--red);font-weight:800;margin-right:6px}
+/* r307: 作成ピッカーの使用回数（右端に小さく表示） */
+.sug .opt .cnt{display:inline-flex;float:right;margin:2px 0 0 8px}
 .ppl{display:flex;align-items:center;gap:10px;padding:0 4px 10px}
 .ppl .pl{flex:0 0 auto;color:var(--gold2);font-weight:800}
 .addRow{padding:10px 0 0}.addRow .pl{width:44px}.addf .addRow select{margin-top:0}
@@ -91,6 +93,13 @@ main[data-tab]:not([data-tab=make]){padding-bottom:calc(30px + env(safe-area-ins
 .srch{display:flex;gap:6px;align-items:center;margin-bottom:10px}
 .li{display:flex;align-items:center;gap:6px;min-height:54px;padding:6px 0;border-bottom:1px solid #261e19;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;border-radius:8px}
 .li:last-child{border-bottom:0}
+/* r306: 確認タブのスワイプ削除 */
+.swipe-wrap{position:relative;overflow:hidden;border-bottom:1px solid #261e19}
+.swipe-wrap:last-child{border-bottom:0}
+.swipe-under{position:absolute;right:0;top:0;bottom:0;width:88px;display:flex;align-items:center;justify-content:center}
+.swipe-under .mini{width:88px;height:100%;min-height:0;border:0;border-radius:0;background:#3a1d20}
+.swipe-row{position:relative;transition:transform .18s ease;touch-action:pan-y;background:var(--card)}
+.swipe-wrap .li{border-bottom:0}
 .lt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-left:2px}
 .cnt{min-width:28px;height:24px;padding:0 7px;border-radius:12px;background:rgba(217,169,92,.15);color:var(--gold2);display:flex;align-items:center;justify-content:center;font-size:16px}
 input,select,textarea,button{font-size:16px;font-family:inherit;color:var(--ink)}
@@ -201,6 +210,6 @@ textarea.tsvtx{margin-top:10px;min-height:140px;font-family:ui-monospace,Menlo,m
 <div id="modal"></div>
 <div id="sug" class="sug" hidden></div>
 <div id="pick" class="sug" hidden></div>
-<script src="app.js?v=305"></script>
+<script src="app.js?v=307"></script>
 </body>
 </html>
