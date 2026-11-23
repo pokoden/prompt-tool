@@ -1,4 +1,4 @@
-/* プロンプト作成 r311 */
+/* プロンプト作成 r312 */
 (() => {
 const API = 'https://api.github.com/repos/pokoden/slot-data/contents/';
 const PARTS_PATH = 'prompt/parts.json';
@@ -1590,6 +1590,7 @@ window.editItem = (kind, id) => {
     closeModal();
     look.cat = dest.key;
     LS.set('pr_lookcat', look.cat);
+    syncGalleryTexts();
     saveUser(false).then(ok => { if (ok) status('保存したよ', true); });
     render();
   };
@@ -1908,6 +1909,53 @@ window.migrateGalleryPoses = async () => {
   render();
   modal(`<div class="mt">差し替えしたよ</div><div class="prev">差し替えた件数：${r.remapped}件<br>すでに新しいポーズ：${r.alreadyNew}件<br>対象外（修正系など）：${r.notInMap}件${r.missing.length ? '<br>見つからなかった：' + esc(r.missing.join('、')) : ''}${r.keptOutEdit.length ? '<br>手で直した最終文を残した：' + r.keptOutEdit.length + '件' : ''}<br>古いポーズはまだ消してないよ。確認してから消してね。</div><div class="row two"><button class="b" onclick="closeModal()">閉じる</button></div>`, 'small');
 };
+
+/* ---------- r312: ギャラリーの文章を今の部品・ポーズに合わせる ----------
+   スナップの行をタイトル（優先はID）で照合し、本文とIDを最新のものに差し替える。
+   手で編集した行も、部品側が新しくなっていれば新しい方を使う（最後の更新が最終）。
+   行が変わったら最終文も組み立て直す。IDも付け替えるので、確認の画像紐付けも切れない。 */
+function syncGalleryTexts() {
+  if (!D || !U || !U.gallery) return 0;
+  const maps = {};
+  for (const slot of SLOTS) {
+    const byId = new Map(), byLabel = new Map();
+    for (const it of flatOptions(slot)) {
+      if (it.id && !byId.has(it.id)) byId.set(it.id, it);
+      if (it.label && !byLabel.has(it.label)) byLabel.set(it.label, it);
+    }
+    maps[slot.key] = { byId, byLabel };
+  }
+  let changed = 0;
+  for (const g of galLive()) {
+    const sel = g.snap && g.snap.sel;
+    if (!sel) continue;
+    let dirty = false;
+    for (const slot of SLOTS) {
+      const v = sel[slot.key];
+      if (!v || v.custom) continue;
+      const m = maps[slot.key];
+      const id = legacyId(slot.key, v);
+      const cur = (id && m.byId.get(id)) || (v.label && m.byLabel.get(v.label)) || null;
+      if (!cur) continue;
+      if (v.id !== cur.id || v.label !== cur.label || v.text !== cur.text || v.typ !== cur.typ || v.edited) {
+        v.id = cur.id; v.label = cur.label; v.text = cur.text; v.typ = cur.typ;
+        delete v.edited;
+        dirty = true;
+      }
+    }
+    if (dirty) {
+      const savedSel = st.sel, savedOut = st.outputEdit, savedOpen = st.open;
+      try {
+        restoreSnap(g.snap);
+        g.text = textFor(gcOf(g), false);
+        g.outEdit = false;
+      } finally { st.sel = savedSel; st.outputEdit = savedOut; st.open = savedOpen; }
+      changed++;
+    }
+  }
+  return changed;
+}
+window.syncGalleryTexts = syncGalleryTexts;
 
 function applyGal(id) {
   const g = galById(id);
@@ -2300,6 +2348,7 @@ async function impTsvText(text) {
     if (!(await ask(`${(kind === 'pose' ? cats : cats.map(catDisp)).join('・')} を入れ替えますか？`, '入れ替える', 'やめる'))) return false;
   }
   const n = kind === 'pose' ? impPoses(rows, head, mode) : impParts(rows, head, mode);
+  syncGalleryTexts();
   refreshSel();
   st.list = '';
   scheduleSave();
@@ -2547,6 +2596,7 @@ async function boot() {
     if (tok()) await loadRemote();
     else if (!D) tab = 'io';
     migrateQuality();
+    if (syncGalleryTexts()) scheduleSave();
     restoreMakeState();
     ensureLock();
     status(tok() ? '読み込んだよ' : (D ? '' : 'トークンを入れてね'), !!D);
