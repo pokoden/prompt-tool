@@ -1,4 +1,4 @@
-/* プロンプト作成 r310 */
+/* プロンプト作成 r311 */
 (() => {
 const API = 'https://api.github.com/repos/pokoden/slot-data/contents/';
 const PARTS_PATH = 'prompt/parts.json';
@@ -474,7 +474,7 @@ function optionsFor(slot, ppl) {
   if (slot.kind === 'clothes') {
     const used = usedClothTyp(slot.key);
     const groups = [];
-    for (const sub of ['下着', '上', '下', 'ワンピ', '水着', '後付け', '隠し', '特殊']) {
+    for (const sub of clothSubs()) {
       const items = allParts().filter(p => p.cat === '服装' && p.sub === sub && (p.text || p.label) && p.label !== '✖️');
       const vis = items.filter(p => !p.typ || p.typ === '後付け' || p.typ === '隠し' || !used.has(p.typ));
       if (vis.length) groups.push({ group: sub, items: vis });
@@ -1316,7 +1316,7 @@ function partCatFor(c, sub) {
 function subsForLook(c) {
   if (!c) return [];
   if (c.pose) return [...new Set(allPoses().map(p => p.cat).filter(Boolean))];
-  if (c.key === 'cloth') return CLOTH_SUBS.slice();
+  if (c.key === 'cloth') return clothSubs();
   return [...new Set(allParts().filter(p => c.cats.includes(p.cat)).map(p => p.sub).filter(Boolean))];
 }
 function comboHTML(id, placeholder, value) {
@@ -1939,11 +1939,19 @@ function applyGal(id) {
 
 /* ---------- 追加（手入力で部品・ポーズを足す。分類は確認タブ LOOK_CATS と同じ並び） ---------- */
 const CLOTH_SUBS = ['下着', '上', '下', 'ワンピ', '水着', '後付け', '隠し', '特殊'];
+/* r311: 服装の小分類は固定8つ＋データにある新しい小分類（着物など）を初出順で追加する */
+function clothSubs() {
+  const subs = CLOTH_SUBS.slice();
+  for (const p of allParts()) {
+    if (p.cat === '服装' && p.sub && !subs.includes(p.sub)) subs.push(p.sub);
+  }
+  return subs;
+}
 const ADD_PPL = ['1人', '2人', '3人'];
 const addCatOf = () => LOOK_CATS.find(c => c.key === LS.get('pr_addcat', 'pose')) || LOOK_CATS[0];
 function addSubs(c) {
   if (c.pose) return [...new Set(allPoses().map(p => p.cat).filter(Boolean))];
-  if (c.key === 'cloth') return CLOTH_SUBS;
+  if (c.key === 'cloth') return clothSubs();
   return [...new Set(allParts().filter(p => c.cats.includes(p.cat)).map(p => p.sub).filter(Boolean))];
 }
 function renderAdd() {
